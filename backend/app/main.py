@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.config import Settings, get_settings
 from app.api.v1.router import v1_router
 from app.models.database import init_db, close_db
+from app.services.llm import init_llm
 from app.services.vectorstore import init_vectorstore
 from app.utils.logger import configure_logging, get_logger
 
@@ -53,6 +54,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_vectorstore(
         persist_dir=str(settings.chroma_persist_path),
         collection_name=settings.CHROMA_COLLECTION_NAME,
+    )
+
+    # Initialize LLM
+    init_llm(
+        api_key=settings.GEMINI_API_KEY,
+        model=settings.GEMINI_MODEL,
     )
 
     # Initialize database (creates tables if they don't exist)
