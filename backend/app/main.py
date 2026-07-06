@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from app.config import Settings, get_settings
 from app.api.v1.router import v1_router
+from app.models.database import init_db, close_db
 from app.utils.logger import configure_logging, get_logger
 
 
@@ -48,9 +49,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     storage_dir.mkdir(parents=True, exist_ok=True)
     logger.info("ChromaDB storage: %s", storage_dir)
 
-    db_dir = Path(settings.database_path).parent
-    db_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("Database storage: %s", settings.database_path)
+    # Initialize database (creates tables if they don't exist)
+    await init_db(settings.DATABASE_URL, settings.database_path)
+    logger.info("Database initialized: %s", settings.database_path)
 
     # Store settings in app state for dependency injection
     app.state.settings = settings
@@ -60,6 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # --- Shutdown ---
+    await close_db()
     logger.info("Application shutdown complete")
 
 

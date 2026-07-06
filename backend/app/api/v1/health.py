@@ -5,23 +5,17 @@ Reports connectivity status of all subsystems:
 Gemini LLM, ChromaDB vector store, and SQLite database.
 """
 
-from fastapi import APIRouter, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.database import get_db_session
+from app.models.schemas import HealthResponse
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 router = APIRouter(tags=["Health"])
-
-
-class HealthResponse(BaseModel):
-    """Health check response schema."""
-
-    status: str
-    gemini: str
-    chromadb: str
-    database: str
 
 
 @router.get(
@@ -46,18 +40,24 @@ class HealthResponse(BaseModel):
         }
     },
 )
-async def health_check() -> HealthResponse:
+async def health_check(
+    db: AsyncSession = Depends(get_db_session),
+) -> HealthResponse:
     """
     Check the health of all subsystems.
 
     Returns connectivity status for Gemini, ChromaDB, and the database.
-    Full connectivity checks will be wired in as services are added.
     """
-    # Placeholder statuses — will be replaced with real checks
-    # as services are implemented in subsequent tasks.
+    # -- Database check --
+    try:
+        await db.execute(text("SELECT 1"))
+        database_status = "connected"
+    except Exception:
+        database_status = "error"
+
+    # -- Gemini and ChromaDB checks (wired in later tasks) --
     gemini_status = "not_configured"
     chromadb_status = "not_configured"
-    database_status = "not_configured"
 
     # Determine overall status
     statuses = [gemini_status, chromadb_status, database_status]

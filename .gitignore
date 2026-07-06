@@ -35,3 +35,7 @@ dist/
 # OS Files
 .DS_Store
 Thumbs.db
+
+# Runtime storage
+backend/storage/*.db
+backend/storage/chromadb/
