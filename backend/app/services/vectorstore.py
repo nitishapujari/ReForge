@@ -1,0 +1,165 @@
+"""
+ReForge — Vector Store Service.
+
+Manages ChromaDB persistent client, collection operations, and embeddings
+using the all-MiniLM-L6-v2 sentence transformer model.
+"""
+
+import chromadb
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+from app.constants import EMBEDDING_MODEL
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
+# Module-level singleton
+_client: chromadb.ClientAPI | None = None
+_collection: chromadb.Collection | None = None
+_embedding_fn: SentenceTransformerEmbeddingFunction | None = None
+
+
+def init_vectorstore(persist_dir: str, collection_name: str) -> None:
+    """
+    Initialize the ChromaDB persistent client and collection.
+
+    Args:
+        persist_dir: Directory path for ChromaDB persistence.
+        collection_name: Name of the collection to use.
+    """
+    global _client, _collection, _embedding_fn
+
+    _embedding_fn = SentenceTransformerEmbeddingFunction(
+        model_name=EMBEDDING_MODEL,
+    )
+
+    _client = chromadb.PersistentClient(path=persist_dir)
+
+    _collection = _client.get_or_create_collection(
+        name=collection_name,
+        embedding_function=_embedding_fn,
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    doc_count = _collection.count()
+    logger.info(
+        "ChromaDB initialized: collection='%s', documents=%d, persist='%s'",
+        collection_name,
+        doc_count,
+        persist_dir,
+    )
+
+
+def get_collection() -> chromadb.Collection:
+    """
+    Get the active ChromaDB collection.
+
+    Returns:
+        The ChromaDB collection instance.
+
+    Raises:
+        RuntimeError: If vectorstore has not been initialized.
+    """
+    if _collection is None:
+        raise RuntimeError("Vector store not initialized. Call init_vectorstore() first.")
+    return _collection
+
+
+def add_documents(
+    ids: list[str],
+    documents: list[str],
+    metadatas: list[dict],
+) -> None:
+    """
+    Add document chunks to the vector store.
+
+    Args:
+        ids: Unique IDs for each chunk.
+        documents: Text content of each chunk.
+        metadatas: Metadata dict for each chunk (document_id, filename, etc.).
+    """
+    collection = get_collection()
+    collection.add(
+        ids=ids,
+        documents=documents,
+        metadatas=metadatas,
+    )
+    logger.info("Added %d chunks to vector store", len(ids))
+
+
+def delete_by_document_id(document_id: str) -> int:
+    """
+    Delete all chunks belonging to a specific document.
+
+    Args:
+        document_id: The document UUID to delete.
+
+    Returns:
+        Number of chunks deleted.
+    """
+    collection = get_collection()
+
+    # Find all chunks for this document
+    results = collection.get(
+        where={"document_id": document_id},
+    )
+
+    chunk_ids = results["ids"]
+    if not chunk_ids:
+        logger.warning("No chunks found for document_id=%s", document_id)
+        return 0
+
+    collection.delete(ids=chunk_ids)
+    logger.info(
+        "Deleted %d chunks for document_id=%s", len(chunk_ids), document_id
+    )
+    return len(chunk_ids)
+
+
+def list_documents() -> list[dict]:
+    """
+    List all unique documents in the vector store with metadata.
+
+    Returns:
+        List of dicts with document_id, filename, chunk_count, created_at.
+    """
+    collection = get_collection()
+
+    # Get all metadata
+    results = collection.get(
+        include=["metadatas"],
+    )
+
+    if not results["metadatas"]:
+        return []
+
+    # Aggregate by document_id
+    documents: dict[str, dict] = {}
+    for meta in results["metadatas"]:
+        doc_id = meta.get("document_id", "unknown")
+        if doc_id not in documents:
+            documents[doc_id] = {
+                "document_id": doc_id,
+                "filename": meta.get("filename", "unknown"),
+                "chunk_count": 0,
+                "created_at": meta.get("created_at", ""),
+            }
+        documents[doc_id]["chunk_count"] += 1
+
+    return list(documents.values())
+
+
+def check_health() -> bool:
+    """
+    Check if the vector store is operational.
+
+    Returns:
+        True if healthy, False otherwise.
+    """
+    try:
+        if _collection is None:
+            return False
+        _collection.count()
+        return True
+    except Exception:
+        return False

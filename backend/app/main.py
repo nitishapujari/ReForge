@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.config import Settings, get_settings
 from app.api.v1.router import v1_router
 from app.models.database import init_db, close_db
+from app.services.vectorstore import init_vectorstore
 from app.utils.logger import configure_logging, get_logger
 
 
@@ -47,7 +48,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Ensure storage directories exist
     storage_dir = Path(settings.chroma_persist_path)
     storage_dir.mkdir(parents=True, exist_ok=True)
-    logger.info("ChromaDB storage: %s", storage_dir)
+
+    # Initialize vector store
+    init_vectorstore(
+        persist_dir=str(settings.chroma_persist_path),
+        collection_name=settings.CHROMA_COLLECTION_NAME,
+    )
 
     # Initialize database (creates tables if they don't exist)
     await init_db(settings.DATABASE_URL, settings.database_path)

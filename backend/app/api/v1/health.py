@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database import get_db_session
 from app.models.schemas import HealthResponse
+from app.services.vectorstore import check_health as check_vectorstore_health
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,9 +56,11 @@ async def health_check(
     except Exception:
         database_status = "error"
 
-    # -- Gemini and ChromaDB checks (wired in later tasks) --
+    # -- ChromaDB check --
+    chromadb_status = "connected" if check_vectorstore_health() else "error"
+
+    # -- Gemini check (wired in Task 1.4) --
     gemini_status = "not_configured"
-    chromadb_status = "not_configured"
 
     # Determine overall status
     statuses = [gemini_status, chromadb_status, database_status]
