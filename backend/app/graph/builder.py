@@ -14,12 +14,13 @@ Constructs the self-healing RAG graph with the following flow:
           │   fail      │──→ END (graceful failure)
           └────────────┘
 
-Nodes are registered as stubs in this task. They will be
-implemented with real logic in Tasks 2.2–2.5.
+Nodes are implemented progressively across Tasks 2.2-2.5.
+Retrieve node: implemented (Task 2.2).
 """
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.retrieval import retrieve_node
 from app.constants import DEFAULT_TOP_K, MAX_RETRIES
 from app.graph.state import GraphState
 from app.utils.logger import get_logger
@@ -28,19 +29,8 @@ logger = get_logger(__name__)
 
 
 # =============================================================================
-# Node Stubs (replaced with real implementations in Tasks 2.2–2.5)
+# Node Stubs (replaced with real implementations as tasks progress)
 # =============================================================================
-
-
-def retrieve_node(state: GraphState) -> dict:
-    """
-    Retrieval node — fetches relevant documents from the vector store.
-
-    Stub: passes through without modifying state.
-    Will be implemented in Task 2.2.
-    """
-    logger.info("[STUB] retrieve_node called")
-    return {}
 
 
 def generate_node(state: GraphState) -> dict:
