@@ -7,8 +7,9 @@ save to chat history, and return the grounded answer with sources.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+import asyncio
 
-from app.agents import generate_answer
+from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
 from app.models.schemas import ChatRequest, ChatResponse
 from app.services import chat_history
@@ -18,6 +19,8 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["Chat"])
 
+# Compile the LangGraph self-healing RAG graph once at startup
+compiled_graph = compile_graph()
 
 @router.post(
     "/chat",
@@ -87,9 +90,18 @@ async def chat(
         content=request.question,
     )
 
-    # Step 3: Generate answer through the RAG pipeline
+    # Step 3: Generate answer through the LangGraph pipeline
     try:
-        result = await generate_answer(question=request.question)
+        initial_state = get_initial_state(question=request.question, session_id=session_id)
+        # Execute the graph synchronously in a background thread
+        result = await asyncio.to_thread(compiled_graph.invoke, initial_state)
+        
+        final_answer = result.get("final_answer") or result.get("answer") or "Sorry, I could not generate an answer."
+        sources = result.get("sources", [])
+        grounded = result.get("grounded", False)
+        confidence = result.get("confidence", 0.0)
+        attempts = result.get("attempts", 1)
+        
     except Exception as e:
         logger.error(
             "Generation failed for session %s: [%s] %s",
@@ -107,23 +119,24 @@ async def chat(
         db=db,
         session_id=session_id,
         role="assistant",
-        content=result["answer"],
+        content=final_answer,
     )
 
     logger.info(
-        "Chat complete: session=%s, grounded=%s, confidence=%.4f, sources=%d",
+        "Chat complete: session=%s, grounded=%s, confidence=%.4f, sources=%d, attempts=%d",
         session_id,
-        result["grounded"],
-        result["confidence"],
-        len(result["sources"]),
+        grounded,
+        confidence,
+        len(sources),
+        attempts
     )
 
     # Step 5: Return the response
     return ChatResponse(
         session_id=session_id,
-        answer=result["answer"],
-        sources=result["sources"],
-        grounded=result["grounded"],
-        confidence=result["confidence"],
-        attempts=result["attempts"],
+        answer=final_answer,
+        sources=sources,
+        grounded=grounded,
+        confidence=confidence,
+        attempts=attempts,
     )
