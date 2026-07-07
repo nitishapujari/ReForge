@@ -17,10 +17,12 @@ Constructs the self-healing RAG graph with the following flow:
 Nodes are implemented progressively across Tasks 2.2-2.5.
 Retrieve node: implemented (Task 2.2).
 Generate node: implemented (Task 2.3).
+Critic node: implemented (Task 2.4).
 """
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.critic import critique_node
 from app.agents.generator import generate_node
 from app.agents.retrieval import retrieve_node
 from app.constants import DEFAULT_TOP_K, MAX_RETRIES
@@ -33,23 +35,6 @@ logger = get_logger(__name__)
 # =============================================================================
 # Node Stubs (replaced with real implementations as tasks progress)
 # =============================================================================
-
-
-def critique_node(state: GraphState) -> dict:
-    """
-    Critic node — evaluates answer quality and groundedness.
-
-    Stub: auto-accepts with full confidence.
-    Will be implemented in Task 2.4.
-    """
-    logger.info("[STUB] critique_node called")
-    return {
-        "grounded": True,
-        "confidence": 1.0,
-        "critic_feedback": None,
-        "unsupported_claims": [],
-        "missing_information": [],
-    }
 
 
 def decision_node(state: GraphState) -> dict:

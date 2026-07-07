@@ -151,6 +151,102 @@ def invoke(
     )
 
 
+def invoke_structured(
+    prompt: str,
+    response_schema: type,
+    system_instruction: str | None = None,
+    temperature: float = 0.1,  # Lower temperature for structured output by default
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    max_retries: int = 3,
+):
+    """
+    Invoke the Gemini LLM and parse the response into a structured Pydantic model.
+
+    Args:
+        prompt: The user/input prompt text.
+        response_schema: A Pydantic BaseModel class defining the expected output structure.
+        system_instruction: Optional system instruction for the model.
+        temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative).
+        max_output_tokens: Maximum tokens in the response.
+        max_retries: Number of retry attempts on failure.
+
+    Returns:
+        An instance of the provided response_schema.
+
+    Raises:
+        RuntimeError: If all retries are exhausted.
+    """
+    client = get_client()
+
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        response_mime_type="application/json",
+        response_schema=response_schema,
+    )
+
+    if system_instruction:
+        config.system_instruction = system_instruction
+
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            start_time = time.monotonic()
+
+            response = client.models.generate_content(
+                model=_model_name,
+                contents=prompt,
+                config=config,
+            )
+
+            elapsed = time.monotonic() - start_time
+            
+            # The google-genai SDK handles parsing into the Pydantic model if passed as response_schema
+            # However, sometimes we might need to manually parse response.text if it returns raw JSON.
+            # Using response.parsed is supported in the new SDK when response_schema is provided.
+            if hasattr(response, "parsed") and response.parsed is not None:
+                parsed_response = response.parsed
+                logger.info(
+                    "Structured LLM invocation successful: model=%s, latency=%.2fs, attempt=%d/%d",
+                    _model_name,
+                    elapsed,
+                    attempt,
+                    max_retries,
+                )
+                return parsed_response
+            
+            # Fallback if parsed isn't automatically set (though it should be)
+            import json
+            if response.text:
+                parsed_json = json.loads(response.text)
+                parsed_response = response_schema.model_validate(parsed_json)
+                logger.info(
+                    "Structured LLM invocation successful (manual parse): model=%s, latency=%.2fs, attempt=%d/%d",
+                    _model_name,
+                    elapsed,
+                    attempt,
+                    max_retries,
+                )
+                return parsed_response
+
+            raise RuntimeError("Model returned empty response.")
+
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                "Structured LLM invocation failed (attempt %d/%d): %s",
+                attempt,
+                max_retries,
+                str(e),
+            )
+            if attempt < max_retries:
+                time.sleep(2**attempt)  # Exponential backoff
+
+    logger.error("Structured LLM invocation failed after %d retries.", max_retries)
+    raise RuntimeError(f"Structured LLM failed after {max_retries} retries. Last error: {last_error}")
+
+
 def check_health() -> bool:
     """
     Check if the Gemini LLM is accessible.
