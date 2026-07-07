@@ -16,10 +16,12 @@ Constructs the self-healing RAG graph with the following flow:
 
 Nodes are implemented progressively across Tasks 2.2-2.5.
 Retrieve node: implemented (Task 2.2).
+Generate node: implemented (Task 2.3).
 """
 
 from langgraph.graph import END, StateGraph
 
+from app.agents.generator import generate_node
 from app.agents.retrieval import retrieve_node
 from app.constants import DEFAULT_TOP_K, MAX_RETRIES
 from app.graph.state import GraphState
@@ -31,17 +33,6 @@ logger = get_logger(__name__)
 # =============================================================================
 # Node Stubs (replaced with real implementations as tasks progress)
 # =============================================================================
-
-
-def generate_node(state: GraphState) -> dict:
-    """
-    Generator node — produces an answer from context.
-
-    Stub: passes through without modifying state.
-    Will be implemented in Task 2.3.
-    """
-    logger.info("[STUB] generate_node called")
-    return {}
 
 
 def critique_node(state: GraphState) -> dict:

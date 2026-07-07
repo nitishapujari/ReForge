@@ -11,6 +11,8 @@ This is the foundational agent. The self-healing loop (Phase 2)
 will wrap this agent with critic evaluation and query rewriting.
 """
 
+import asyncio
+
 from app.constants import DEFAULT_TOP_K
 from app.models.schemas import SourceDocument
 from app.prompts import (
@@ -123,7 +125,8 @@ async def generate_answer(
         relevant_scores[0],
     )
 
-    answer = await llm.invoke(
+    answer = await asyncio.to_thread(
+        llm.invoke,
         prompt=user_prompt,
         system_instruction=GENERATOR_SYSTEM_PROMPT,
     )

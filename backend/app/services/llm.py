@@ -59,7 +59,7 @@ def get_model_name() -> str:
     return _model_name
 
 
-async def invoke(
+def invoke(
     prompt: str,
     system_instruction: str | None = None,
     temperature: float = DEFAULT_TEMPERATURE,

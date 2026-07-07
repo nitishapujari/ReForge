@@ -8,7 +8,7 @@ save to chat history, and return the grounded answer with sources.
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.generator import generate_answer
+from app.agents import generate_answer
 from app.models.database import get_db_session
 from app.models.schemas import ChatRequest, ChatResponse
 from app.services import chat_history
