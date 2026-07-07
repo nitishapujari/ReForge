@@ -11,6 +11,8 @@ Phase 1 with a state-aware node for the self-healing graph.
 
 import time
 
+from langchain_core.runnables.config import RunnableConfig
+
 from app.graph.state import GraphState, TraceEntry
 from app.models.schemas import SourceDocument
 from app.prompts import (
@@ -28,7 +30,7 @@ logger = get_logger(__name__)
 RELEVANCE_THRESHOLD: float = 0.3
 
 
-def generate_node(state: GraphState) -> dict:
+def generate_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
     """
     Generator node — builds context from retrieved docs and generates an answer.
 
@@ -40,10 +42,15 @@ def generate_node(state: GraphState) -> dict:
 
     Args:
         state: Current graph state.
+        config: LangGraph runnable config.
 
     Returns:
         Dict of state updates.
     """
+    stream_callback = None
+    if config and "configurable" in config:
+        stream_callback = config["configurable"].get("stream_callback")
+
     start_time = time.perf_counter()
 
     question = state.get("rewritten_question") or state["question"]
@@ -128,10 +135,23 @@ def generate_node(state: GraphState) -> dict:
         relevant_scores[0],
     )
 
-    answer = llm.invoke(
-        prompt=user_prompt,
-        system_instruction=GENERATOR_SYSTEM_PROMPT,
-    )
+    if stream_callback:
+        logger.info("Using streaming LLM invocation")
+        # Emit a clear event at the start of generation to handle retries
+        stream_callback({"type": "clear"})
+        chunks = []
+        for chunk in llm.invoke_stream(
+            prompt=user_prompt,
+            system_instruction=GENERATOR_SYSTEM_PROMPT,
+        ):
+            chunks.append(chunk)
+            stream_callback({"type": "token", "content": chunk})
+        answer = "".join(chunks)
+    else:
+        answer = llm.invoke(
+            prompt=user_prompt,
+            system_instruction=GENERATOR_SYSTEM_PROMPT,
+        )
 
     # Build source citations
     sources = []

@@ -6,8 +6,10 @@ save to chat history, and return the grounded answer with sources.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
+import json
 
 from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
@@ -104,7 +106,7 @@ async def chat(
         
         # Convert TraceEntry models to dicts for JSON storage
         trace_entries = result.get("trace", [])
-        trace_data = [t.model_dump() for t in trace_entries] if trace_entries else None
+        trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
         
     except Exception as e:
         logger.error(
@@ -145,3 +147,146 @@ async def chat(
         confidence=confidence,
         attempts=attempts,
     )
+
+
+@router.post(
+    "/chat/stream",
+    status_code=status.HTTP_200_OK,
+    summary="Chat Stream",
+    description=(
+        "Send a question and receive a streaming response via Server-Sent Events (SSE). "
+        "Streams tokens as they are generated, followed by a final JSON payload."
+    ),
+)
+async def chat_stream(
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Process a chat request and stream the response tokens."""
+    if request.session_id:
+        session = await chat_history.get_session(db, request.session_id)
+        if session is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Session {request.session_id} not found.",
+            )
+        session_id = session.id
+        logger.info("Continuing session (stream): %s", session_id)
+    else:
+        title = request.question[:100]
+        session = await chat_history.create_session(db, title=title)
+        session_id = session.id
+        logger.info("Created new session (stream): %s", session_id)
+
+    # Save the user message immediately
+    await chat_history.add_message(
+        db=db,
+        session_id=session_id,
+        role="user",
+        content=request.question,
+    )
+    
+    # We must await db.commit() here before spinning up the background thread 
+    # to ensure the session and user message are visible, although SQLAlchemy
+    # doesn't strictly need it if the async loop continues to hold the session,
+    # but it is safer since add_message only flushes.
+    await db.commit()
+
+    loop = asyncio.get_running_loop()
+    q = asyncio.Queue()
+
+    def stream_callback(event: dict):
+        # Fire-and-forget push to the queue from the synchronous thread
+        loop.call_soon_threadsafe(
+            q.put_nowait,
+            event
+        )
+
+    def run_graph_in_thread():
+        try:
+            initial_state = get_initial_state(question=request.question, session_id=session_id)
+            result = compiled_graph.invoke(
+                initial_state,
+                config={"configurable": {"stream_callback": stream_callback}}
+            )
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": result})
+        except Exception as e:
+            logger.error("Streaming generation failed: %s", str(e))
+            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": str(e)})
+
+    async def event_generator():
+        # Start the graph execution in a background thread
+        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread))
+        
+        try:
+            while True:
+                item = await q.get()
+                
+                if item["type"] == "token":
+                    # Emit a token SSE
+                    yield f"data: {json.dumps(item)}\n\n"
+                    
+                elif item["type"] == "error":
+                    # Emit an error SSE and break
+                    yield f"data: {json.dumps(item)}\n\n"
+                    break
+                    
+                elif item["type"] == "done":
+                    # The graph has finished execution.
+                    result = item["result"]
+                    final_answer = result.get("final_answer") or result.get("answer") or "Sorry, I could not generate an answer."
+                    sources = result.get("sources", [])
+                    grounded = result.get("grounded", False)
+                    confidence = result.get("confidence", 0.0)
+                    attempts = result.get("attempts", 1)
+                    trace_entries = result.get("trace", [])
+                    trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
+                    
+                    # Save the assistant message with trace
+                    await chat_history.add_message(
+                        db=db,
+                        session_id=session_id,
+                        role="assistant",
+                        content=final_answer,
+                        trace_data=trace_data,
+                    )
+                    
+                    # Flush and commit the message to DB immediately
+                    await db.commit()
+
+                    logger.info(
+                        "Chat stream complete: session=%s, grounded=%s, confidence=%.4f",
+                        session_id,
+                        grounded,
+                        confidence
+                    )
+
+                    # Emit the final SSE
+                    sources_dump = [s.model_dump() if hasattr(s, "model_dump") else s for s in sources]
+                    final_event = {
+                        "type": "done",
+                        "session_id": session_id,
+                        "grounded": grounded,
+                        "confidence": confidence,
+                        "attempts": attempts,
+                        "sources": sources_dump,
+                        "trace_available": bool(trace_data)
+                    }
+                    yield f"data: {json.dumps(final_event)}\n\n"
+                    break
+                
+                elif item["type"] == "clear":
+                    # Instruct the frontend to clear the current generation buffer
+                    yield f"data: {json.dumps(item)}\n\n"
+                    
+        except asyncio.CancelledError:
+            # Client disconnected
+            logger.info("Client disconnected from chat stream")
+            task.cancel()
+            raise
+        finally:
+            # Explicitly close the db session to prevent SAWarning during TestClient teardown
+            await db.close()
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+

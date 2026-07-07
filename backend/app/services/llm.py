@@ -151,6 +151,102 @@ def invoke(
     )
 
 
+def invoke_stream(
+    prompt: str,
+    system_instruction: str | None = None,
+    temperature: float = DEFAULT_TEMPERATURE,
+    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    max_retries: int = 3,
+):
+    """
+    Invoke the Gemini LLM with streaming and retry logic.
+    Yields chunks of text as they are generated.
+
+    Args:
+        prompt: The user/input prompt text.
+        system_instruction: Optional system instruction for the model.
+        temperature: Sampling temperature (0.0 = deterministic, 1.0 = creative).
+        max_output_tokens: Maximum tokens in the response.
+        max_retries: Number of retry attempts on failure.
+
+    Yields:
+        Chunks of text from the LLM.
+
+    Raises:
+        RuntimeError: If all retries are exhausted.
+    """
+    client = get_client()
+
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
+
+    if system_instruction:
+        config.system_instruction = system_instruction
+
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            start_time = time.monotonic()
+
+            response_stream = client.models.generate_content_stream(
+                model=_model_name,
+                contents=prompt,
+                config=config,
+            )
+
+            has_yielded = False
+            for chunk in response_stream:
+                if chunk.text:
+                    has_yielded = True
+                    yield chunk.text
+
+            elapsed = time.monotonic() - start_time
+            if has_yielded:
+                logger.info(
+                    "LLM stream successful: model=%s, latency=%.2fs, attempt=%d/%d",
+                    _model_name,
+                    elapsed,
+                    attempt,
+                    max_retries,
+                )
+                return
+
+            # Response exists but no text was yielded
+            logger.warning(
+                "LLM stream returned empty text: model=%s, attempt=%d/%d",
+                _model_name,
+                attempt,
+                max_retries,
+            )
+            last_error = RuntimeError("LLM stream returned empty response")
+
+        except Exception as e:
+            elapsed = time.monotonic() - start_time
+            last_error = e
+            logger.warning(
+                "LLM stream failed: model=%s, attempt=%d/%d, latency=%.2fs, error=%s",
+                _model_name,
+                attempt,
+                max_retries,
+                elapsed,
+                str(e),
+            )
+
+            # Exponential backoff before retry
+            if attempt < max_retries:
+                backoff = 2 ** (attempt - 1)
+                logger.info("Retrying stream in %ds...", backoff)
+                time.sleep(backoff)
+
+    raise RuntimeError(
+        f"LLM stream failed after {max_retries} attempts: {last_error}"
+    )
+
+
+
 def invoke_structured(
     prompt: str,
     response_schema: type,
