@@ -62,11 +62,11 @@ def critique_node(state: GraphState) -> dict:
             decision=None,
         )
         return {
-            "grounded": True,
-            "confidence": 1.0,
-            "critic_feedback": "Fallback answer; no critique needed.",
+            "grounded": False,
+            "confidence": 0.0,
+            "critic_feedback": "Fallback answer due to missing context.",
             "unsupported_claims": [],
-            "missing_information": [],
+            "missing_information": ["No relevant information found in context"],
             "trace": state.get("trace", []) + [trace_entry],
         }
 

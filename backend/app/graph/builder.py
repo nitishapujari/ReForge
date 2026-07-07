@@ -18,50 +18,21 @@ Nodes are implemented progressively across Tasks 2.2-2.5.
 Retrieve node: implemented (Task 2.2).
 Generate node: implemented (Task 2.3).
 Critic node: implemented (Task 2.4).
+Decision & Rewrite nodes: implemented (Task 2.5).
 """
 
 from langgraph.graph import END, StateGraph
 
 from app.agents.critic import critique_node
+from app.agents.decision import decision_node
 from app.agents.generator import generate_node
 from app.agents.retrieval import retrieve_node
+from app.agents.rewrite import rewrite_node
 from app.constants import DEFAULT_TOP_K, MAX_RETRIES
 from app.graph.state import GraphState
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-# =============================================================================
-# Node Stubs (replaced with real implementations as tasks progress)
-# =============================================================================
-
-
-def decision_node(state: GraphState) -> dict:
-    """
-    Decision node — routes based on critic evaluation.
-
-    Stub: always accepts.
-    Will be implemented in Task 2.5.
-    """
-    logger.info("[STUB] decision_node called")
-    return {
-        "decision": "accept",
-        "final_answer": state.get("answer", ""),
-    }
-
-
-def rewrite_node(state: GraphState) -> dict:
-    """
-    Rewrite node — rephrases the query for better retrieval.
-
-    Stub: returns the original question unchanged.
-    Will be implemented in Task 2.5.
-    """
-    logger.info("[STUB] rewrite_node called")
-    return {
-        "rewritten_question": state.get("question", ""),
-    }
 
 
 # =============================================================================
