@@ -102,6 +102,10 @@ async def chat(
         confidence = result.get("confidence", 0.0)
         attempts = result.get("attempts", 1)
         
+        # Convert TraceEntry models to dicts for JSON storage
+        trace_entries = result.get("trace", [])
+        trace_data = [t.model_dump() for t in trace_entries] if trace_entries else None
+        
     except Exception as e:
         logger.error(
             "Generation failed for session %s: [%s] %s",
@@ -120,6 +124,7 @@ async def chat(
         session_id=session_id,
         role="assistant",
         content=final_answer,
+        trace_data=trace_data,
     )
 
     logger.info(

@@ -114,6 +114,7 @@ async def add_message(
     session_id: str,
     role: str,
     content: str,
+    trace_data: list[dict] | None = None,
 ) -> ChatMessage:
     """
     Add a message to an existing chat session.
@@ -131,6 +132,7 @@ async def add_message(
         session_id=session_id,
         role=role,
         content=content,
+        trace_data=trace_data,
     )
     db.add(message)
     await db.flush()
@@ -162,3 +164,34 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
     await db.delete(session)
     logger.info("Deleted chat session: %s", session_id)
     return True
+
+
+async def get_session_traces(db: AsyncSession, session_id: str) -> list[dict]:
+    """
+    Retrieve all execution traces for a given session.
+    Only assistant messages will contain trace_data.
+
+    Args:
+        db: Async database session.
+        session_id: UUID of the chat session.
+
+    Returns:
+        List of dicts containing message_id, timestamp, and trace_data.
+    """
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .where(ChatMessage.trace_data.is_not(None))
+        .order_by(ChatMessage.timestamp.asc())
+    )
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+
+    return [
+        {
+            "message_id": msg.id,
+            "timestamp": msg.timestamp,
+            "trace_data": msg.trace_data,
+        }
+        for msg in messages
+    ]

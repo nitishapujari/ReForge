@@ -151,3 +151,32 @@ class DocumentResponse(BaseModel):
     filename: str
     chunk_count: int
     created_at: str
+
+
+# =============================================================================
+# Traces
+# =============================================================================
+
+
+class TraceEntrySchema(BaseModel):
+    """Schema for a single step in the execution trace."""
+    node: str
+    execution_time_ms: float
+    input_summary: str
+    output_summary: str
+    attempt: int
+    decision: str | None = None
+
+
+class MessageTraceSchema(BaseModel):
+    """Schema for traces associated with a specific message."""
+    message_id: str
+    timestamp: datetime
+    trace_data: list[TraceEntrySchema]
+
+
+class TraceResponse(BaseModel):
+    """Response containing all traces for a session."""
+    session_id: str
+    traces: list[MessageTraceSchema]
+

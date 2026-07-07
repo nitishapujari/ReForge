@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 
@@ -99,6 +100,11 @@ class ChatMessage(Base):
         DateTime(timezone=True),
         default=_utcnow,
         nullable=False,
+    )
+    trace_data = Column(
+        JSON,
+        nullable=True,
+        doc="Execution trace JSON for assistant messages.",
     )
 
     # Relationship
