@@ -227,4 +227,5 @@ async def get_session_traces(db: AsyncSession, session_id: str) -> list[dict]:
             "trace_data": msg.trace_data,
         }
         for msg in messages
+        if msg.trace_data is not None and len(msg.trace_data) > 0
     ]
