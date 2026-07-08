@@ -31,11 +31,13 @@ export default function RootLayout({
           <TooltipProvider>
             <SidebarProvider>
               <AppSidebar />
-              <main className="flex-1 overflow-auto bg-background">
-                <div className="flex h-12 items-center border-b px-4">
+              <main className="flex flex-1 flex-col bg-background w-full">
+                <div className="flex h-12 items-center border-b px-4 shrink-0">
                   <SidebarTrigger />
                 </div>
-                {children}
+                <div className="flex-1">
+                  {children}
+                </div>
               </main>
             </SidebarProvider>
           </TooltipProvider>
