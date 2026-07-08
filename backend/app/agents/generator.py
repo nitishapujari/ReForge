@@ -53,7 +53,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
 
     start_time = time.perf_counter()
 
-    question = state.get("rewritten_question") or state["question"]
+    question = state["question"]
     docs = state.get("retrieved_docs", [])
     metas = state.get("retrieved_metadatas", [])
     scores = state.get("similarity_scores", [])
@@ -123,7 +123,11 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     context = "\n\n---\n\n".join(context_parts)
 
     # Build prompt and call LLM
+    chat_history = state.get("chat_history", [])
+    history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]) if chat_history else "No previous conversation history."
+    
     user_prompt = GENERATOR_USER_PROMPT.format(
+        history=history_str,
         context=context,
         question=question,
     )

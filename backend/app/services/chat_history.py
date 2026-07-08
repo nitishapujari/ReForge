@@ -166,6 +166,39 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
     return True
 
 
+async def get_recent_messages(db: AsyncSession, session_id: str, limit: int = 10) -> list[dict]:
+    """
+    Retrieve the most recent messages for a session.
+
+    Args:
+        db: Async database session.
+        session_id: UUID of the chat session.
+        limit: Maximum number of messages to retrieve.
+
+    Returns:
+        List of message dicts in chronological order.
+    """
+    stmt = (
+        select(ChatMessage)
+        .where(ChatMessage.session_id == session_id)
+        .order_by(ChatMessage.timestamp.desc())
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    messages = result.scalars().all()
+
+    # Reverse to return in chronological order
+    messages = list(reversed(messages))
+
+    return [
+        {
+            "role": msg.role,
+            "content": msg.content,
+        }
+        for msg in messages
+    ]
+
+
 async def get_session_traces(db: AsyncSession, session_id: str) -> list[dict]:
     """
     Retrieve all execution traces for a given session.

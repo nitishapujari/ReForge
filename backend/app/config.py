@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # --- LLM ---
     GEMINI_API_KEY: str  # Required — app will fail fast if missing
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    USE_MOCK_LLM: bool = False
 
     # --- ChromaDB ---
     CHROMA_PERSIST_DIR: str = "storage/chromadb"

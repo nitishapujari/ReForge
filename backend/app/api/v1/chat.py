@@ -94,7 +94,12 @@ async def chat(
 
     # Step 3: Generate answer through the LangGraph pipeline
     try:
-        initial_state = get_initial_state(question=request.question, session_id=session_id)
+        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+        initial_state = get_initial_state(
+            question=request.question,
+            session_id=session_id,
+            chat_history=chat_history_data,
+        )
         # Execute the graph synchronously in a background thread
         result = await asyncio.to_thread(compiled_graph.invoke, initial_state)
         
@@ -202,9 +207,13 @@ async def chat_stream(
             event
         )
 
-    def run_graph_in_thread():
+    def run_graph_in_thread(chat_history_data: list[dict]):
         try:
-            initial_state = get_initial_state(question=request.question, session_id=session_id)
+            initial_state = get_initial_state(
+                question=request.question,
+                session_id=session_id,
+                chat_history=chat_history_data,
+            )
             result = compiled_graph.invoke(
                 initial_state,
                 config={"configurable": {"stream_callback": stream_callback}}
@@ -215,8 +224,10 @@ async def chat_stream(
             loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": str(e)})
 
     async def event_generator():
+        # Fetch chat history before starting the thread
+        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
         # Start the graph execution in a background thread
-        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread))
+        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, chat_history_data))
         
         try:
             while True:

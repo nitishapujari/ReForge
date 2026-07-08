@@ -129,13 +129,14 @@ def compile_graph():
     return compiled
 
 
-def get_initial_state(question: str, session_id: str) -> GraphState:
+def get_initial_state(question: str, session_id: str, chat_history: list[dict] | None = None) -> GraphState:
     """
     Create the initial state for a graph invocation.
 
     Args:
         question: The user's question.
         session_id: The chat session UUID.
+        chat_history: The recent conversation history.
 
     Returns:
         A fully initialized GraphState dict.
@@ -143,6 +144,8 @@ def get_initial_state(question: str, session_id: str) -> GraphState:
     return GraphState(
         question=question,
         session_id=session_id,
+        chat_history=chat_history or [],
+        retrieval_query=None,
         rewritten_question=None,
         retrieved_docs=[],
         retrieved_metadatas=[],

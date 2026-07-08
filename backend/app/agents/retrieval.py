@@ -10,14 +10,48 @@ similarity_scores, and a trace entry.
 """
 
 import time
+import re
 
 from app.graph.state import GraphState, TraceEntry
-from app.services import retriever
+from app.services import retriever, llm
 from app.services.vectorstore import get_collection
-from app.prompts import NO_DOCUMENTS_RESPONSE
+from app.prompts import NO_DOCUMENTS_RESPONSE, CONDENSE_SYSTEM_PROMPT, CONDENSE_USER_PROMPT
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def is_ambiguous(question: str) -> bool:
+    """Check if a question needs contextual condensation."""
+    q_lower = question.lower().strip()
+    words = q_lower.split()
+    
+    # 1. Very short question
+    if len(words) < 5:
+        return True
+        
+    # 2. Contains ambiguous references
+    pronouns = {"it", "its", "this", "that", "these", "those", "they", "them", "he", "she", "his", "her", "theirs"}
+    for word in words:
+        clean_word = re.sub(r'[^\w\s]', '', word)
+        if clean_word in pronouns:
+            return True
+            
+    # 3. Starts with follow-up phrases
+    follow_up_phrases = [
+        "what about",
+        "how about",
+        "and",
+        "also",
+        "why",
+        "how",
+        "can you explain more"
+    ]
+    for phrase in follow_up_phrases:
+        if q_lower.startswith(phrase):
+            return True
+            
+    return False
 
 
 def retrieve_node(state: GraphState) -> dict:
@@ -36,8 +70,35 @@ def retrieve_node(state: GraphState) -> dict:
     """
     start_time = time.perf_counter()
 
-    # Use rewritten question if available, otherwise original
-    query = state.get("rewritten_question") or state["question"]
+    # Determine query: rewritten (loop) -> retrieval_query (condensed) -> original
+    query = state.get("rewritten_question")
+    retrieval_query = state.get("retrieval_query")
+    
+    if not query:
+        if retrieval_query:
+            query = retrieval_query
+        else:
+            chat_history = state.get("chat_history", [])
+            original_question = state["question"]
+            
+            if chat_history and is_ambiguous(original_question):
+                # Condense the question using history
+                history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
+                user_prompt = CONDENSE_USER_PROMPT.format(history=history_str, question=original_question)
+                
+                condensed = llm.invoke(
+                    prompt=user_prompt,
+                    system_instruction=CONDENSE_SYSTEM_PROMPT,
+                ).strip()
+                
+                query = condensed
+                retrieval_query = condensed
+                logger.info("Retrieval: using contextualized query ('%s')", query)
+            else:
+                query = original_question
+                retrieval_query = query
+                logger.info("Retrieval: using original question ('%s')", query)
+
     top_k = state.get("top_k", 5)
     attempt = state.get("attempts", 0) + 1
 
@@ -64,6 +125,7 @@ def retrieve_node(state: GraphState) -> dict:
         )
 
         return {
+            "retrieval_query": retrieval_query,
             "retrieved_docs": [],
             "retrieved_metadatas": [],
             "similarity_scores": [],
@@ -101,6 +163,7 @@ def retrieve_node(state: GraphState) -> dict:
     )
 
     return {
+        "retrieval_query": retrieval_query,
         "retrieved_docs": docs,
         "retrieved_metadatas": metas,
         "similarity_scores": scores,
