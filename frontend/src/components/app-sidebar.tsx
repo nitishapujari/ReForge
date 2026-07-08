@@ -26,7 +26,7 @@ const navItems = [
     icon: MessageSquare,
   },
   {
-    title: "Knowledge Base",
+    title: "Documents",
     url: "/knowledge",
     icon: Library,
   },
