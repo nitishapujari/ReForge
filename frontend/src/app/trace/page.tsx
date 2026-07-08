@@ -29,7 +29,7 @@ interface TraceEntry {
   execution_time_ms: number
   input_summary: string
   output_summary: string
-  attempt: int
+  attempt: number
   decision: string | null
 }
 

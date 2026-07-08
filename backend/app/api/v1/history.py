@@ -110,3 +110,20 @@ async def delete_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Session {session_id} not found.",
         )
+
+
+@router.delete(
+    "",
+    status_code=status.HTTP_200_OK,
+    summary="Delete All Chat Sessions",
+    description="Deletes all chat sessions and their messages.",
+    responses={
+        200: {"description": "All sessions deleted"},
+    },
+)
+async def delete_all_sessions(
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Delete all sessions and all associated messages."""
+    count = await chat_history.delete_all_sessions(db)
+    return {"deleted_count": count, "message": f"Successfully deleted {count} sessions."}

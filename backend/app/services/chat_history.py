@@ -166,6 +166,28 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
     return True
 
 
+async def delete_all_sessions(db: AsyncSession) -> int:
+    """
+    Delete all chat sessions and their messages (cascade).
+    
+    Args:
+        db: Async database session.
+        
+    Returns:
+        Number of sessions deleted.
+    """
+    stmt = select(ChatSession)
+    result = await db.execute(stmt)
+    sessions = result.scalars().all()
+    
+    count = len(sessions)
+    for session in sessions:
+        await db.delete(session)
+        
+    logger.info("Deleted all %d chat sessions.", count)
+    return count
+
+
 async def get_recent_messages(db: AsyncSession, session_id: str, limit: int = 10) -> list[dict]:
     """
     Retrieve the most recent messages for a session.
