@@ -19,6 +19,7 @@ class TraceEntry(TypedDict):
     output_summary: str
     attempt: int
     decision: str | None
+    retrieval_diagnostics: list[dict] | None
 
 
 class GraphState(TypedDict):

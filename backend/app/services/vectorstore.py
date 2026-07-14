@@ -116,37 +116,7 @@ def delete_by_document_id(document_id: str) -> int:
     return len(chunk_ids)
 
 
-def list_documents() -> list[dict]:
-    """
-    List all unique documents in the vector store with metadata.
 
-    Returns:
-        List of dicts with document_id, filename, chunk_count, created_at.
-    """
-    collection = get_collection()
-
-    # Get all metadata
-    results = collection.get(
-        include=["metadatas"],
-    )
-
-    if not results["metadatas"]:
-        return []
-
-    # Aggregate by document_id
-    documents: dict[str, dict] = {}
-    for meta in results["metadatas"]:
-        doc_id = meta.get("document_id", "unknown")
-        if doc_id not in documents:
-            documents[doc_id] = {
-                "document_id": doc_id,
-                "filename": meta.get("filename", "unknown"),
-                "chunk_count": 0,
-                "created_at": meta.get("created_at", ""),
-            }
-        documents[doc_id]["chunk_count"] += 1
-
-    return list(documents.values())
 
 
 def check_health() -> bool:

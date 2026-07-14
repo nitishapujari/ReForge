@@ -15,6 +15,11 @@ export default function UploadPage() {
     document_id: string
     message: string
   } | null>(null)
+  const [duplicateData, setDuplicateData] = useState<{
+    filename: string
+    existing_document_id: string
+    message: string
+  } | null>(null)
   
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -74,6 +79,7 @@ export default function UploadPage() {
     setFile(null)
     setErrorMsg(null)
     setSuccessData(null)
+    setDuplicateData(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
@@ -109,8 +115,58 @@ export default function UploadPage() {
       }
 
       const data = await response.json()
+      
+      if (data.duplicate) {
+        setDuplicateData({
+          filename: data.filename,
+          existing_document_id: data.existing_document_id,
+          message: data.message
+        })
+        return // Wait for user action
+      }
+
       setSuccessData(data)
       setFile(null) // Clear selection on success
+      
+    } catch (err: any) {
+      setErrorMsg(err.message || "An unexpected error occurred.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleReplace = async () => {
+    if (!file || !duplicateData?.existing_document_id) return
+
+    setIsUploading(true)
+    setErrorMsg(null)
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${duplicateData.existing_document_id}`, {
+        method: "PUT",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        let errorText = "Failed to replace document."
+        try {
+          const errJson = await response.json()
+          if (errJson.detail) {
+            errorText = errJson.detail
+          }
+        } catch (e) {
+          errorText = `Server error: ${response.status}`
+        }
+        throw new Error(errorText)
+      }
+
+      const data = await response.json()
+      setSuccessData(data)
+      setDuplicateData(null)
+      setFile(null)
       
     } catch (err: any) {
       setErrorMsg(err.message || "An unexpected error occurred.")
@@ -155,6 +211,28 @@ export default function UploadPage() {
             <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive">
               <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
               <div className="text-sm font-medium">{errorMsg}</div>
+            </div>
+          )}
+
+          {/* Duplicate Banner */}
+          {duplicateData && (
+            <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg flex flex-col gap-3 text-amber-700 dark:text-amber-400">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-semibold mb-1">Document Conflict</p>
+                  <p>{duplicateData.message}</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-2">
+                <Button variant="outline" size="sm" onClick={clearFile} disabled={isUploading}>
+                  Cancel
+                </Button>
+                <Button variant="default" size="sm" onClick={handleReplace} disabled={isUploading}>
+                  {isUploading ? <Loader2 className="w-3 h-3 mr-2 animate-spin" /> : null}
+                  Replace
+                </Button>
+              </div>
             </div>
           )}
 
@@ -217,7 +295,7 @@ export default function UploadPage() {
           </Button>
           <Button 
             onClick={handleUpload} 
-            disabled={!file || isUploading}
+            disabled={!file || isUploading || !!duplicateData}
             className="w-48"
           >
             {isUploading ? (

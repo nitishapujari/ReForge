@@ -14,7 +14,7 @@ import asyncio
 from google import genai
 from google.genai import types
 
-from app.config import get_settings
+
 from app.constants import DEFAULT_TEMPERATURE, MAX_OUTPUT_TOKENS
 from app.utils.logger import get_logger
 
@@ -84,17 +84,6 @@ def invoke(
     Raises:
         RuntimeError: If all retries are exhausted.
     """
-    settings = get_settings()
-    if settings.USE_MOCK_LLM:
-        logger.info("Using MOCK LLM for invoke")
-        time.sleep(0.5)
-        # Check if this is the condense prompt or a rewrite prompt
-        if "expert search query condenser" in (system_instruction or ""):
-            return "Mock condensed query"
-        if "expert search query rewriter" in (system_instruction or ""):
-            return "Mock rewritten query"
-        return "This is a mock LLM response generated in development mode."
-
     client = get_client()
 
     config = types.GenerateContentConfig(
@@ -188,27 +177,6 @@ def invoke_stream(
     Raises:
         RuntimeError: If all retries are exhausted.
     """
-    settings = get_settings()
-    if settings.USE_MOCK_LLM:
-        logger.info("Using MOCK LLM for invoke_stream")
-        
-        mock_response = "This is a mock streaming response from the LLM. It simulates tokens arriving over time without using actual API quota."
-        
-        if "what did i just ask you" in prompt.lower():
-            import re
-            user_messages = re.findall(r"^User:\s*(.*)$", prompt, re.MULTILINE)
-            # The current question is already in the history, so it's the last item
-            if len(user_messages) > 1:
-                mock_response = f"You just asked me: '{user_messages[-2].strip()}'"
-            else:
-                mock_response = "I couldn't find your previous question in the history."
-        
-        words = mock_response.split(" ")
-        for i, word in enumerate(words):
-            time.sleep(0.05)
-            yield word + (" " if i < len(words) - 1 else "")
-        return
-
     client = get_client()
 
     config = types.GenerateContentConfig(
@@ -306,27 +274,6 @@ def invoke_structured(
     Raises:
         RuntimeError: If all retries are exhausted.
     """
-    settings = get_settings()
-    if settings.USE_MOCK_LLM:
-        logger.info("Using MOCK LLM for invoke_structured")
-        time.sleep(0.5)
-        # Attempt to mock a generic instance of response_schema
-        # For the CriticOutput specifically, we will just return a fully grounded response
-        mock_data = {}
-        for field_name, field_info in response_schema.model_fields.items():
-            if field_info.annotation is bool:
-                mock_data[field_name] = True
-            elif field_info.annotation is float:
-                mock_data[field_name] = 0.95
-            elif field_info.annotation == list[str]:
-                mock_data[field_name] = []
-            elif field_info.annotation is str:
-                mock_data[field_name] = "Mock string value"
-            else:
-                mock_data[field_name] = None
-                
-        return response_schema.model_validate(mock_data)
-
     client = get_client()
 
     config = types.GenerateContentConfig(

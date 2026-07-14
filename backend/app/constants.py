@@ -6,8 +6,12 @@ Centralised here to avoid hardcoded magic numbers.
 """
 
 # --- Retrieval ---
-DEFAULT_TOP_K: int = 5
-EXPANDED_TOP_K: int = 10
+DEFAULT_TOP_K: int = 15
+MAX_CONTEXT_CHUNKS: int = 5
+RELATIVE_MARGIN: float = 0.05
+EXPANDED_TOP_K: int = 20
+RELEVANCE_THRESHOLD: float = 0.50
+STRONG_MATCH_THRESHOLD: float = 0.65
 
 # --- Chunking ---
 CHUNK_SIZE: int = 1000

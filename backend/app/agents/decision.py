@@ -82,11 +82,15 @@ def decision_node(state: GraphState) -> dict:
         confidence,
     )
 
+    output_summary = f"decision={decision}"
+    if decision == "fail":
+        output_summary += " | Failure Reason: Maximum retries exhausted without producing a grounded answer."
+
     trace_entry = TraceEntry(
         node="decision",
         execution_time_ms=round(elapsed_ms, 2),
         input_summary=f"grounded={grounded}, conf={confidence:.2f}, attempts={attempts}",
-        output_summary=f"decision={decision}",
+        output_summary=output_summary,
         attempt=attempts,
         decision=decision,
     )
@@ -97,7 +101,12 @@ def decision_node(state: GraphState) -> dict:
     }
 
     # If accepting or failing, set the final answer
-    if decision in ["accept", "fail"]:
+    if decision == "accept":
         updates["final_answer"] = answer
+    elif decision == "fail":
+        updates["final_answer"] = "I don't have enough information in the uploaded documents to answer this question confidently."
+        updates["grounded"] = False
+        updates["confidence"] = 0.0
+        updates["sources"] = []
 
     return updates

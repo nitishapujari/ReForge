@@ -26,26 +26,12 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Minimum similarity score to consider a document relevant
-RELEVANCE_THRESHOLD: float = 0.3
-
+from app.constants import RELEVANCE_THRESHOLD, RELATIVE_MARGIN, MAX_CONTEXT_CHUNKS, STRONG_MATCH_THRESHOLD
+from app.models.schemas import SourceDocument, ChunkPreview
 
 def generate_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
     """
     Generator node — builds context from retrieved docs and generates an answer.
-
-    Reads from state:
-        - question, retrieved_docs, retrieved_metadatas, similarity_scores
-
-    Writes to state:
-        - answer, sources, trace
-
-    Args:
-        state: Current graph state.
-        config: LangGraph runnable config.
-
-    Returns:
-        Dict of state updates.
     """
     stream_callback = None
     if config and "configurable" in config:
@@ -71,6 +57,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             output_summary="fallback: no documents retrieved",
             attempt=attempt,
             decision=None,
+            retrieval_diagnostics=[],
         )
 
         return {
@@ -79,21 +66,116 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             "trace": state.get("trace", []) + [trace_entry],
         }
 
-    # Filter by relevance threshold
+    # 1. Group chunks by document
+    from collections import defaultdict
+    doc_groups = defaultdict(list)
+    for doc, meta, score in zip(docs, metas, scores):
+        filename = meta.get("filename", "unknown")
+        doc_groups[filename].append({"doc": doc, "meta": meta, "score": score})
+
+    # 2. Compute aggregate metrics for each document
+    aggregated_docs = []
+    diagnostics = []
+    
+    for filename, chunks in doc_groups.items():
+        chunk_scores = [c["score"] for c in chunks]
+        max_score = max(chunk_scores)
+        avg_score = sum(chunk_scores) / len(chunk_scores)
+        chunk_count = len(chunks)
+        
+        doc_entry = {
+            "filename": filename,
+            "max_score": max_score,
+            "avg_score": avg_score,
+            "chunk_count": chunk_count,
+            "chunks": chunks,
+            "document_score": max_score
+        }
+        
+        diag = {
+            "filename": filename,
+            "score": max_score, # Use document score for trace
+            "chunk_count": chunk_count,
+            "avg_score": avg_score,
+            "included": False,
+            "reason": ""
+        }
+        
+        # Absolute threshold
+        if max_score < RELEVANCE_THRESHOLD:
+            diag["reason"] = f"Max score below absolute threshold ({max_score:.2f} < {RELEVANCE_THRESHOLD})"
+            diagnostics.append(diag)
+            continue
+            
+        # Minimum evidence check: single weak hit
+        if chunk_count == 1 and max_score < STRONG_MATCH_THRESHOLD:
+            diag["reason"] = f"Insufficient evidence: single weak match ({max_score:.2f} < {STRONG_MATCH_THRESHOLD})"
+            diagnostics.append(diag)
+            continue
+            
+        aggregated_docs.append((doc_entry, diag))
+
+    # 3. Sort documents by (chunk_count, max_score) to rank deep relevance above shallow relevance
+    aggregated_docs.sort(key=lambda x: (x[0]["chunk_count"], x[0]["max_score"]), reverse=True)
+
+    # 4. Apply dynamic relative margin based on the best document
+    best_doc_score = aggregated_docs[0][0]["document_score"] if aggregated_docs else 0.0
+    dynamic_threshold = max(RELEVANCE_THRESHOLD, best_doc_score - RELATIVE_MARGIN)
+
+    ranked_docs = []
+    for doc_entry, diag in aggregated_docs:
+        if doc_entry["document_score"] < dynamic_threshold:
+            diag["reason"] = f"Below dynamic relative threshold ({doc_entry['document_score']:.2f} < {dynamic_threshold:.2f})"
+        else:
+            diag["included"] = True
+            diag["reason"] = "Passed all filters"
+            ranked_docs.append(doc_entry)
+        diagnostics.append(diag)
+
+    # 5. Cap to MAX_CONTEXT_CHUNKS and build context arrays
     relevant_docs = []
     relevant_metas = []
     relevant_scores = []
+    grouped_sources = []
+    
+    total_chunks = 0
+    for doc_entry in ranked_docs:
+        source_doc = SourceDocument(
+            filename=doc_entry["filename"],
+            document_score=doc_entry["document_score"],
+            chunks=[]
+        )
+        
+        for c in doc_entry["chunks"]:
+            if total_chunks >= MAX_CONTEXT_CHUNKS:
+                break
+            
+            relevant_docs.append(c["doc"])
+            relevant_metas.append(c["meta"])
+            relevant_scores.append(c["score"])
+            total_chunks += 1
+            
+            preview = c["doc"][:200] + "..." if len(c["doc"]) > 200 else c["doc"]
+            source_doc.chunks.append(
+                ChunkPreview(
+                    chunk_number=c["meta"].get("chunk_number"),
+                    page_number=c["meta"].get("page_number"),
+                    content_preview=preview,
+                    similarity_score=c["score"]
+                )
+            )
+            
+        if source_doc.chunks:
+            grouped_sources.append(source_doc)
 
-    for doc, meta, score in zip(docs, metas, scores):
-        if score >= RELEVANCE_THRESHOLD:
-            relevant_docs.append(doc)
-            relevant_metas.append(meta)
-            relevant_scores.append(score)
+        if total_chunks >= MAX_CONTEXT_CHUNKS:
+            break
 
     if not relevant_docs:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
-            "No docs above relevance threshold (%.2f) — fallback",
+            "No docs passed filters (best=%.2f, absolute=%.2f) — fallback",
+            best_doc_score,
             RELEVANCE_THRESHOLD,
         )
 
@@ -101,9 +183,10 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             node="generate",
             execution_time_ms=round(elapsed_ms, 2),
             input_summary=f"question='{question[:60]}', docs={len(docs)}",
-            output_summary=f"fallback: no docs above threshold {RELEVANCE_THRESHOLD}",
+            output_summary="fallback: no docs above thresholds",
             attempt=attempt,
             decision=None,
+            retrieval_diagnostics=diagnostics,
         )
 
         return {
@@ -157,19 +240,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             system_instruction=GENERATOR_SYSTEM_PROMPT,
         )
 
-    # Build source citations
-    sources = []
-    for doc, meta, score in zip(relevant_docs, relevant_metas, relevant_scores):
-        preview = doc[:200] + "..." if len(doc) > 200 else doc
-        sources.append(
-            SourceDocument(
-                filename=meta.get("filename", "unknown"),
-                page_number=meta.get("page_number"),
-                chunk_number=meta.get("chunk_number"),
-                content_preview=preview,
-                similarity_score=score,
-            )
-        )
+    sources = grouped_sources
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -186,6 +257,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         output_summary=f"answer_len={len(answer)}, sources={len(sources)}",
         attempt=attempt,
         decision=None,
+        retrieval_diagnostics=diagnostics,
     )
 
     return {

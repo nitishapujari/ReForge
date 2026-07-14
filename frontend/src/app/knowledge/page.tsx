@@ -19,6 +19,7 @@ interface DocumentData {
   filename: string
   chunk_count: number
   created_at: string
+  status?: string
 }
 
 export default function KnowledgeBasePage() {
@@ -34,9 +35,11 @@ export default function KnowledgeBasePage() {
   const [isDeleting, setIsDeleting] = useState(false)
 
   // Fetch documents
-  const fetchDocuments = async () => {
-    setLoading(true)
-    setErrorMsg(null)
+  const fetchDocuments = async (showLoading = true) => {
+    if (showLoading) {
+      setLoading(true)
+      setErrorMsg(null)
+    }
     try {
       const res = await fetch("http://127.0.0.1:8000/api/v1/documents")
       if (!res.ok) throw new Error("Failed to fetch documents")
@@ -45,15 +48,27 @@ export default function KnowledgeBasePage() {
       data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       setDocuments(data)
     } catch (err: any) {
-      setErrorMsg(err.message || "An unexpected error occurred.")
+      if (showLoading) setErrorMsg(err.message || "An unexpected error occurred.")
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }
 
   useEffect(() => {
     fetchDocuments()
   }, [])
+
+  // Poll for status updates if any document is processing
+  useEffect(() => {
+    const hasProcessing = documents.some(doc => doc.status === 'processing')
+    if (!hasProcessing) return
+
+    const interval = setInterval(() => {
+      fetchDocuments(false)
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [documents])
 
   // Filter and paginate
   const filteredDocuments = useMemo(() => {
@@ -204,9 +219,19 @@ export default function KnowledgeBasePage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400">
-                          Indexed
-                        </Badge>
+                        {doc.status === 'processing' ? (
+                          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400">
+                            Processing
+                          </Badge>
+                        ) : doc.status === 'failed' ? (
+                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                            Failed
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400">
+                            Indexed
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm">
                         {doc.chunk_count.toLocaleString()}

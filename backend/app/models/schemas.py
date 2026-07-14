@@ -46,18 +46,26 @@ class ChatRequest(BaseModel):
     )
 
 
-class SourceDocument(BaseModel):
-    """A source document cited in the answer."""
-
-    filename: str = Field(..., examples=["research_paper.pdf"])
-    page_number: int | None = Field(default=None, examples=[3])
+class ChunkPreview(BaseModel):
+    """A single matching chunk within a source document."""
     chunk_number: int | None = Field(default=None, examples=[5])
+    page_number: int | None = Field(default=None, examples=[3])
     content_preview: str = Field(
         ...,
-        description="Brief excerpt from the source.",
+        description="Brief excerpt from the source chunk.",
         examples=["RAG combines retrieval with generation..."],
     )
     similarity_score: float = Field(..., examples=[0.89])
+
+
+class SourceDocument(BaseModel):
+    """A grouped source document cited in the answer."""
+    filename: str = Field(..., examples=["research_paper.pdf"])
+    document_score: float = Field(..., description="Aggregated relevance score of the document.", examples=[0.89])
+    chunks: list[ChunkPreview] = Field(
+        default_factory=list,
+        description="List of retrieved chunks from this document.",
+    )
 
 
 class ChatResponse(BaseModel):
@@ -142,6 +150,8 @@ class DocumentUploadResponse(BaseModel):
     message: str = Field(
         ..., examples=["Document uploaded and queued for processing."]
     )
+    duplicate: bool = Field(default=False, description="True if a document conflict was detected.")
+    existing_document_id: str | None = Field(default=None, description="The ID of the existing document if a conflict was detected.")
 
 
 class DocumentResponse(BaseModel):
@@ -151,6 +161,7 @@ class DocumentResponse(BaseModel):
     filename: str
     chunk_count: int
     created_at: str
+    status: str
 
 
 # =============================================================================
@@ -166,6 +177,7 @@ class TraceEntrySchema(BaseModel):
     output_summary: str
     attempt: int
     decision: str | None = None
+    retrieval_diagnostics: list[dict] | None = None
 
 
 class MessageTraceSchema(BaseModel):

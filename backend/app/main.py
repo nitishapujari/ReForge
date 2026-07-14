@@ -66,6 +66,59 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db(settings.DATABASE_URL, settings.database_path)
     logger.info("Database initialized: %s", settings.database_path)
 
+    # --- Migration: Legacy Documents ---
+    from sqlalchemy import select
+    from app.models.database import get_session_factory
+    from app.models.document import Document
+    from app.services.vectorstore import get_collection
+    from datetime import datetime, timezone
+
+    factory = get_session_factory()
+    async with factory() as session:
+        # Check if documents table is empty
+        result = await session.execute(select(Document.id).limit(1))
+        if not result.first():
+            try:
+                collection = get_collection()
+                metadata_results = collection.get(include=["metadatas"])
+                if metadata_results and metadata_results.get("metadatas"):
+                    legacy_docs = {}
+                    for meta in metadata_results["metadatas"]:
+                        if not meta: continue
+                        doc_id = meta.get("document_id")
+                        if not doc_id: continue
+                        
+                        if doc_id not in legacy_docs:
+                            created_str = meta.get("created_at", "")
+                            try:
+                                dt = datetime.fromisoformat(created_str)
+                            except ValueError:
+                                dt = datetime.now(timezone.utc)
+                                
+                            legacy_docs[doc_id] = {
+                                "id": doc_id,
+                                "filename": meta.get("filename", "unknown"),
+                                "chunk_count": 0,
+                                "created_at": dt,
+                            }
+                        legacy_docs[doc_id]["chunk_count"] += 1
+                        
+                    for doc_data in legacy_docs.values():
+                        new_doc = Document(
+                            id=doc_data["id"],
+                            filename=doc_data["filename"],
+                            file_hash=None,
+                            chunk_count=doc_data["chunk_count"],
+                            status="completed",
+                            created_at=doc_data["created_at"],
+                            updated_at=doc_data["created_at"],
+                        )
+                        session.add(new_doc)
+                    await session.commit()
+                    logger.info("Migrated %d legacy documents to SQLite", len(legacy_docs))
+            except Exception as e:
+                logger.error("Failed to migrate legacy documents: %s", e)
+
     # Store settings in app state for dependency injection
     app.state.settings = settings
 

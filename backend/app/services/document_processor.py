@@ -56,34 +56,63 @@ def validate_file(filename: str, file_size: int) -> None:
         )
 
 
-def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
-    """
-    Extract text from a PDF file, page by page.
-
-    Args:
-        file_content: Raw PDF bytes.
-
-    Returns:
-        List of dicts with 'text' and 'page_number' keys.
-    """
+def _parse_pdf_pypdf(file_content: bytes) -> list[dict[str, str | int]]:
     import io
-
     reader = PdfReader(io.BytesIO(file_content))
     pages = []
-
     for i, page in enumerate(reader.pages, start=1):
         text = page.extract_text()
         if text and text.strip():
             pages.append({"text": text.strip(), "page_number": i})
-
-    if not pages:
-        raise DocumentProcessingError(
-            "Could not extract any text from the PDF. "
-            "The file may be image-based or empty."
-        )
-
-    logger.info("Extracted text from %d pages", len(pages))
     return pages
+
+
+def _parse_pdf_pymupdf(file_content: bytes) -> list[dict[str, str | int]]:
+    import fitz
+    doc = fitz.open(stream=file_content, filetype="pdf")
+    pages = []
+    for i, page in enumerate(doc, start=1):
+        text = page.get_text()
+        if text and text.strip():
+            pages.append({"text": text.strip(), "page_number": i})
+    doc.close()
+    return pages
+
+
+def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
+    """
+    Extract text from a PDF file using a chain of parsers.
+    Falls back to subsequent parsers if the current one returns 0 pages.
+    """
+    parsers = [
+        ("pypdf", _parse_pdf_pypdf),
+        ("PyMuPDF", _parse_pdf_pymupdf),
+    ]
+
+    for i, (name, parser_func) in enumerate(parsers):
+        logger.info("Using parser: %s", name)
+        
+        try:
+            pages = parser_func(file_content)
+        except Exception as e:
+            logger.warning("%s encountered an error: %s", name, e)
+            pages = []
+            
+        if pages:
+            logger.info("%s extracted %d pages", name, len(pages))
+            logger.info("Selected parser: %s", name)
+            return pages
+            
+        logger.info("%s extracted 0 pages", name)
+        
+        if i < len(parsers) - 1:
+            next_name = parsers[i + 1][0]
+            logger.info("Falling back to %s", next_name)
+
+    raise DocumentProcessingError(
+        "Could not extract any text from the PDF. "
+        "The file may be image-based or empty."
+    )
 
 
 def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
@@ -109,15 +138,19 @@ def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
 
 
 def process_document(
+    document_id: str,
     filename: str,
     file_content: bytes,
+    file_hash: str | None = None,
 ) -> tuple[str, list[str], list[str], list[dict]]:
     """
     Process a document: extract text, chunk it, and prepare metadata.
 
     Args:
+        document_id: Pre-generated UUID for the document.
         filename: Original filename.
         file_content: Raw file bytes.
+        file_hash: SHA-256 hash of the file.
 
     Returns:
         Tuple of (document_id, chunk_ids, chunk_texts, chunk_metadatas).
@@ -125,8 +158,6 @@ def process_document(
     # Validate
     validate_file(filename, len(file_content))
 
-    # Generate document ID
-    document_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
     # Extract text based on file type
@@ -164,13 +195,18 @@ def process_document(
 
             chunk_ids.append(chunk_id)
             chunk_texts.append(chunk_text)
-            chunk_metadatas.append({
+            
+            meta = {
                 "document_id": document_id,
                 "filename": filename,
                 "page_number": page_number,
                 "chunk_number": chunk_counter,
                 "created_at": created_at,
-            })
+            }
+            if file_hash:
+                meta["file_hash"] = file_hash
+                
+            chunk_metadatas.append(meta)
 
     logger.info(
         "Processed '%s': document_id=%s, pages=%d, chunks=%d",

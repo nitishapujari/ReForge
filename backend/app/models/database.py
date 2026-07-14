@@ -96,3 +96,10 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             await session.rollback()
             raise
+
+
+def get_session_factory():
+    """Get the raw session factory for background tasks."""
+    if _async_session_factory is None:
+        raise RuntimeError("Database not initialized.")
+    return _async_session_factory
