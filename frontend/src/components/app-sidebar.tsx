@@ -4,6 +4,7 @@ import * as React from "react"
 import { MessageSquare, Library, Upload, Settings, Activity } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { Logo } from "@/components/logo"
 
 import {
   Sidebar,
@@ -53,26 +54,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar {...props}>
       <SidebarHeader className="p-4 border-b">
-        <div className="flex items-center gap-2 font-bold text-lg">
-          <div className="bg-primary text-primary-foreground p-1 rounded">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="lucide lucide-anvil"
-            >
-              <path d="M7 10H6a4 4 0 0 1-4-4 1 1 0 0 1 1-1h4" />
-              <path d="M7 5a1 1 0 0 1 1-1h13a1 1 0 0 1 1 1 7.26 7.26 0 0 1-7.26 7.26c-1.12 0-2.19-.28-3.12-.78L8.4 15.36A3.996 3.996 0 0 1 11.23 20H13a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2h1.77a4 4 0 0 1-2.83-4.64L10.26 12C9.28 11.2 8 10 7 10z" />
-            </svg>
+        <Link href="/" className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition-opacity">
+          <div className="flex items-center justify-center w-8 h-8 shrink-0">
+            <Logo />
           </div>
           ReForge
-        </div>
+        </Link>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

@@ -8,6 +8,11 @@ and Swagger/OpenAPI documentation.
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from pathlib import Path
+import os
+
+# Note: ChromaDB emits telemetry warnings (e.g., "Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given")
+# during startup. This is due to an upstream bug in the chromadb/posthog integration where posthog.capture signatures mismatched.
+# Setting ANONYMIZED_TELEMETRY=False does not reliably suppress the error logs, so the warnings are left as-is until patched upstream.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,10 +61,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         collection_name=settings.CHROMA_COLLECTION_NAME,
     )
 
+    # Validate that we have the key for the active provider
+    try:
+        _ = settings.active_api_key
+    except ValueError as e:
+        logger.critical("Configuration error — check your .env file:")
+        logger.critical(str(e))
+        raise SystemExit(1) from e
+
     # Initialize LLM
     init_llm(
-        api_key=settings.GEMINI_API_KEY,
-        model=settings.GEMINI_MODEL,
+        provider=settings.LLM_PROVIDER,
+        gemini_api_key=settings.GEMINI_API_KEY,
+        gemini_model=settings.GEMINI_MODEL,
+        groq_api_key=settings.GROQ_API_KEY,
+        groq_model=settings.GROQ_MODEL,
     )
 
     # Initialize database (creates tables if they don't exist)

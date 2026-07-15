@@ -66,12 +66,31 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             "trace": state.get("trace", []) + [trace_entry],
         }
 
-    # 1. Group chunks by document
+    # 1. Group chunks by document and apply overlap suppression
     from collections import defaultdict
+    
+    def is_overlapping(text1: str, text2: str, threshold: float = 0.7) -> bool:
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        if not words1 or not words2:
+            return False
+        return len(words1.intersection(words2)) / len(words1.union(words2)) > threshold
+
     doc_groups = defaultdict(list)
     for doc, meta, score in zip(docs, metas, scores):
         filename = meta.get("filename", "unknown")
-        doc_groups[filename].append({"doc": doc, "meta": meta, "score": score})
+        
+        is_dup = False
+        for i, existing in enumerate(doc_groups[filename]):
+            if is_overlapping(doc, existing["doc"]):
+                is_dup = True
+                # Keep the strongest scoring chunk
+                if score > existing["score"]:
+                    doc_groups[filename][i] = {"doc": doc, "meta": meta, "score": score}
+                break
+                
+        if not is_dup:
+            doc_groups[filename].append({"doc": doc, "meta": meta, "score": score})
 
     # 2. Compute aggregate metrics for each document
     aggregated_docs = []
@@ -115,8 +134,8 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             
         aggregated_docs.append((doc_entry, diag))
 
-    # 3. Sort documents by (chunk_count, max_score) to rank deep relevance above shallow relevance
-    aggregated_docs.sort(key=lambda x: (x[0]["chunk_count"], x[0]["max_score"]), reverse=True)
+    # 3. Sort documents by (max_score, chunk_count) to prioritize actual relevance
+    aggregated_docs.sort(key=lambda x: (x[0]["max_score"], x[0]["chunk_count"]), reverse=True)
 
     # 4. Apply dynamic relative margin based on the best document
     best_doc_score = aggregated_docs[0][0]["document_score"] if aggregated_docs else 0.0
@@ -145,6 +164,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             document_score=doc_entry["document_score"],
             chunks=[]
         )
+        
+        # Sort chunks internally descending by score
+        doc_entry["chunks"].sort(key=lambda x: x["score"], reverse=True)
         
         for c in doc_entry["chunks"]:
             if total_chunks >= MAX_CONTEXT_CHUNKS:
@@ -240,6 +262,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             system_instruction=GENERATOR_SYSTEM_PROMPT,
         )
 
+    # Use all grouped sources that passed the relevance threshold
     sources = grouped_sources
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000

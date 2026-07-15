@@ -103,17 +103,20 @@ def critique_node(state: GraphState) -> dict:
         
     except Exception as e:
         logger.error("Critique evaluation failed: %s", e)
-        # Fallback conservatively
-        grounded = False
-        confidence = 0.0
+        # Fallback gracefully
+        grounded = None
+        confidence = None
         feedback = f"Error during critique: {e}"
         unsupported = []
         missing = []
+        verification_status = "UNAVAILABLE"
+    else:
+        verification_status = "VERIFIED"
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
     logger.info(
-        "Critique completed: grounded=%s, confidence=%.2f, time=%.1fms",
+        "Critique completed: grounded=%s, confidence=%s, time=%.1fms",
         grounded,
         confidence,
         elapsed_ms,
@@ -123,7 +126,7 @@ def critique_node(state: GraphState) -> dict:
         node="critique",
         execution_time_ms=round(elapsed_ms, 2),
         input_summary=f"context_docs={len(docs)}, answer_len={len(answer)}",
-        output_summary=f"grounded={grounded}, confidence={confidence:.2f}",
+        output_summary=f"grounded={grounded}, confidence={confidence}",
         attempt=attempt,
         decision=None,
     )
@@ -134,5 +137,6 @@ def critique_node(state: GraphState) -> dict:
         "critic_feedback": feedback,
         "unsupported_claims": unsupported,
         "missing_information": missing,
+        "verification_status": verification_status,
         "trace": state.get("trace", []) + [trace_entry],
     }

@@ -19,7 +19,8 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str = Field(..., examples=["healthy"])
-    gemini: str = Field(..., examples=["connected"])
+    active_provider: str = Field(..., description="The currently active LLM provider (e.g., gemini, groq)", examples=["gemini"])
+    llm_status: str = Field(..., examples=["connected"])
     chromadb: str = Field(..., examples=["connected"])
     database: str = Field(..., examples=["connected"])
 
@@ -79,10 +80,18 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Source documents cited in the answer.",
     )
-    grounded: bool = Field(
+    response_type: str = Field(
+        default="GROUNDED",
+        description="The category of the response (e.g., GROUNDED, CONVERSATION)."
+    )
+    verification_status: str = Field(
+        default="VERIFIED",
+        description="Whether verification was performed (VERIFIED or UNAVAILABLE)."
+    )
+    grounded: bool | None = Field(
         ..., description="Whether the answer is grounded in retrieved docs."
     )
-    confidence: float = Field(
+    confidence: float | None = Field(
         ...,
         ge=0.0,
         le=1.0,

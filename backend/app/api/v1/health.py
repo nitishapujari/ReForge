@@ -14,6 +14,7 @@ from app.models.schemas import HealthResponse
 from app.services.llm import check_health as check_llm_health
 from app.services.vectorstore import check_health as check_vectorstore_health
 from app.utils.logger import get_logger
+from app.config import get_settings
 
 logger = get_logger(__name__)
 
@@ -33,7 +34,8 @@ router = APIRouter(tags=["Health"])
                 "application/json": {
                     "example": {
                         "status": "healthy",
-                        "gemini": "connected",
+                        "active_provider": "gemini",
+                        "llm_status": "connected",
                         "chromadb": "connected",
                         "database": "connected",
                     }
@@ -60,11 +62,13 @@ async def health_check(
     # -- ChromaDB check --
     chromadb_status = "connected" if check_vectorstore_health() else "error"
 
-    # -- Gemini check --
-    gemini_status = "connected" if check_llm_health() else "error"
+    # -- LLM check --
+    llm_status = "connected" if check_llm_health() else "error"
+    settings = get_settings()
+    active_provider = settings.LLM_PROVIDER
 
     # Determine overall status
-    statuses = [gemini_status, chromadb_status, database_status]
+    statuses = [llm_status, chromadb_status, database_status]
     if all(s == "connected" for s in statuses):
         overall = "healthy"
     elif any(s == "error" for s in statuses):
@@ -73,16 +77,18 @@ async def health_check(
         overall = "starting"
 
     logger.info(
-        "Health check: overall=%s gemini=%s chromadb=%s db=%s",
+        "Health check: overall=%s provider=%s llm=%s chromadb=%s db=%s",
         overall,
-        gemini_status,
+        active_provider,
+        llm_status,
         chromadb_status,
         database_status,
     )
 
     return HealthResponse(
         status=overall,
-        gemini=gemini_status,
+        active_provider=active_provider,
+        llm_status=llm_status,
         chromadb=chromadb_status,
         database=database_status,
     )

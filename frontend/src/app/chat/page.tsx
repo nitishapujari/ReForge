@@ -18,6 +18,8 @@ type Message = {
   content: string
   status?: "generating" | "done" | "error"
   metadata?: {
+    response_type?: string
+    verification_status?: string
     grounded?: boolean
     confidence?: string
     attempts?: number
@@ -172,6 +174,8 @@ export default function ChatPage() {
                             ...msg,
                             status: "done",
                             metadata: {
+                              response_type: data.response_type,
+                              verification_status: data.verification_status,
                               grounded: data.grounded,
                               confidence: data.confidence,
                               attempts: data.attempts,
@@ -183,7 +187,14 @@ export default function ChatPage() {
                     )
                   )
                 } else if (data.type === "error") {
-                   throw new Error(data.message)
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, status: "error", content: data.error || "An unexpected error occurred." }
+                        : msg
+                    )
+                  )
+                  break
                 }
               } catch (e) {
                 console.error("Failed to parse SSE line:", line, e)
@@ -265,7 +276,12 @@ export default function ChatPage() {
                   >
                     {message.role === "assistant" ? (
                       <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border">
-                        {message.content ? (
+                        {message.status === "error" ? (
+                          <div className="text-destructive flex items-center gap-2 font-medium">
+                            <AlertTriangle className="h-4 w-4" />
+                            {message.content}
+                          </div>
+                        ) : message.content ? (
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {message.content}
                           </ReactMarkdown>
@@ -282,32 +298,37 @@ export default function ChatPage() {
                     )}
                   </div>
                   
-                  {message.role === "assistant" && message.metadata && (
+                  {message.role === "assistant" && message.metadata && message.status !== "error" && (
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      {message.metadata.attempts && message.metadata.attempts > 1 && (
+                      {message.metadata.response_type === "GROUNDED" && message.metadata.attempts && message.metadata.attempts > 1 && (
                         <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
                           <RefreshCw className="h-3 w-3 mr-1" />
                           Self-Healed ({message.metadata.attempts} attempts)
                         </Badge>
                       )}
-                      {message.metadata.grounded ? (
+                      {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status === "UNAVAILABLE" ? (
+                        <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          Grounding verification unavailable
+                        </Badge>
+                      ) : message.metadata.response_type === "GROUNDED" && message.metadata.grounded ? (
                         <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Grounded
                         </Badge>
-                      ) : message.metadata.grounded === false ? (
+                      ) : message.metadata.response_type === "GROUNDED" && message.metadata.grounded === false ? (
                         <Badge variant="outline" className="text-xs bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20">
                           <AlertTriangle className="h-3 w-3 mr-1" />
                           Ungrounded
                         </Badge>
                       ) : null}
-                      {message.metadata.confidence && (
+                      {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status !== "UNAVAILABLE" && message.metadata.confidence !== undefined && (
                         <span className="text-xs text-muted-foreground flex items-center">
                           Confidence: {message.metadata.confidence}
                         </span>
                       )}
                       
-                      {message.metadata.sources && message.metadata.sources.length > 0 && (
+                      {message.metadata.response_type === "GROUNDED" && message.metadata.sources && message.metadata.sources.length > 0 && (
                         <div className="w-full mt-2">
                           <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center">
                             <FileText className="h-3 w-3 mr-1" /> Sources

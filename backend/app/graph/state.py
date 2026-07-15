@@ -46,11 +46,12 @@ class GraphState(TypedDict):
     answer: str | None
 
     # --- Critic node ---
-    grounded: bool
-    confidence: float
+    grounded: bool | None
+    confidence: float | None
     critic_feedback: str | None
     unsupported_claims: list[str]
     missing_information: list[str]
+    verification_status: str
 
     # --- Decision / Loop control ---
     attempts: int

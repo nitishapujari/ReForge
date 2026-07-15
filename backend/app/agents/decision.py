@@ -9,6 +9,7 @@ import time
 
 from app.constants import CONFIDENCE_THRESHOLD
 from app.graph.state import GraphState, TraceEntry
+from app.prompts import NO_RELEVANT_DOCS_RESPONSE
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -43,14 +44,11 @@ def decision_node(state: GraphState) -> dict:
 
     decision = "accept"
 
-    if attempts >= max_attempts:
+    if grounded is None or confidence is None:
+        logger.warning("Verification unavailable (grounded=None). Accepting best effort answer immediately.")
+        decision = "accept"
+    elif attempts >= max_attempts:
         logger.warning("Max attempts reached (%d). Failing or accepting best effort.", max_attempts)
-        # We can either fail or accept the best we have. Let's accept but maybe log a warning.
-        # Wait, the prompt says fail gracefuly. Let's just output fail if not grounded, 
-        # or accept if it's somewhat okay. Let's use 'fail' to trigger graceful degradation in router.
-        # Actually, if attempts >= max_attempts, we should probably just return the best answer we got,
-        # but the builder router handles "fail" by going to END.
-        # We can just accept the best effort or fail.
         if grounded and confidence >= 0.5:
             decision = "accept"
         else:
@@ -104,7 +102,7 @@ def decision_node(state: GraphState) -> dict:
     if decision == "accept":
         updates["final_answer"] = answer
     elif decision == "fail":
-        updates["final_answer"] = "I don't have enough information in the uploaded documents to answer this question confidently."
+        updates["final_answer"] = NO_RELEVANT_DOCS_RESPONSE
         updates["grounded"] = False
         updates["confidence"] = 0.0
         updates["sources"] = []

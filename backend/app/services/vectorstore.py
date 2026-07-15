@@ -33,7 +33,10 @@ def init_vectorstore(persist_dir: str, collection_name: str) -> None:
         model_name=EMBEDDING_MODEL,
     )
 
-    _client = chromadb.PersistentClient(path=persist_dir)
+    _client = chromadb.PersistentClient(
+        path=persist_dir,
+        settings=chromadb.config.Settings(anonymized_telemetry=False)
+    )
 
     _collection = _client.get_or_create_collection(
         name=collection_name,
@@ -63,6 +66,23 @@ def get_collection() -> chromadb.Collection:
     if _collection is None:
         raise RuntimeError("Vector store not initialized. Call init_vectorstore() first.")
     return _collection
+
+
+def get_embedding(text: str) -> list[float]:
+    """
+    Get the embedding vector for a given text.
+
+    Args:
+        text: The string to embed.
+
+    Returns:
+        A list of floats representing the embedding.
+    """
+    if _embedding_fn is None:
+        raise RuntimeError("Vector store not initialized. Call init_vectorstore() first.")
+    # The SentenceTransformerEmbeddingFunction expects a list of strings and returns a list of embeddings
+    embeddings = _embedding_fn([text])
+    return embeddings[0]
 
 
 def add_documents(

@@ -23,8 +23,23 @@ class Settings(BaseSettings):
     )
 
     # --- LLM ---
-    GEMINI_API_KEY: str  # Required — app will fail fast if missing
+    LLM_PROVIDER: str = "gemini"
+    GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
+    GROQ_API_KEY: str | None = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
+    @property
+    def active_api_key(self) -> str:
+        """Returns the active API key based on the LLM_PROVIDER."""
+        if self.LLM_PROVIDER == "groq":
+            if not self.GROQ_API_KEY:
+                raise ValueError("GROQ_API_KEY is required when LLM_PROVIDER=groq")
+            return self.GROQ_API_KEY
+        else:
+            if not self.GEMINI_API_KEY:
+                raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
+            return self.GEMINI_API_KEY
 
     # --- ChromaDB ---
     CHROMA_PERSIST_DIR: str = "storage/chromadb"

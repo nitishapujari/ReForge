@@ -13,8 +13,12 @@ import json
 
 from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
-from app.models.schemas import ChatRequest, ChatResponse
+from app.models.schemas import ChatRequest, ChatResponse, TraceEntrySchema
+from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE, CONVERSATION_SYSTEM_PROMPT
 from app.services import chat_history
+from app.services.llm import invoke, invoke_stream
+from app.services.conversation_router import router as conversation_router, Intent
+from app.services.provider_errors import get_user_facing_error
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -92,6 +96,54 @@ async def chat(
         content=request.question,
     )
 
+    # Step 2.5: Route conversational queries
+    intent = await conversation_router.classify(request.question)
+    if intent != Intent.KNOWLEDGE_QUERY:
+        logger.info("Conversational intent %s detected, bypassing graph", intent.name)
+        
+        # Get chat history for context
+        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+        history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history_data])
+        prompt = f"## Conversation History\n{history_str}\n\n## User Message\n{request.question}"
+        
+        try:
+            response_text = await asyncio.to_thread(
+                invoke,
+                prompt=prompt,
+                system_instruction=CONVERSATION_SYSTEM_PROMPT
+            )
+        except Exception as e:
+            logger.error("Conversational LLM failed: %s", str(e))
+            response_text = "I'm having a little trouble connecting right now, but hello!"
+            
+        trace_entry = TraceEntrySchema(
+            node="router",
+            execution_time_ms=0.0,
+            input_summary=f"query='{request.question}'",
+            output_summary=f"intent={intent.name}, generated conversational response",
+            attempt=1,
+            decision="bypass"
+        )
+        
+        await chat_history.add_message(
+            db=db,
+            session_id=session_id,
+            role="assistant",
+            content=response_text,
+            trace_data=[trace_entry.model_dump()]
+        )
+        await db.commit()
+        
+        return ChatResponse(
+            session_id=session_id,
+            answer=response_text,
+            sources=[],
+            response_type="CONVERSATION",
+            grounded=True,
+            confidence=1.0,
+            attempts=0
+        )
+
     # Step 3: Generate answer through the LangGraph pipeline
     try:
         chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
@@ -108,6 +160,11 @@ async def chat(
         grounded = result.get("grounded", False)
         confidence = result.get("confidence", 0.0)
         attempts = result.get("attempts", 1)
+        verification_status = result.get("verification_status", "VERIFIED")
+        
+        response_type = "GROUNDED"
+        if final_answer in (NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE):
+            response_type = "NO_CONTEXT"
         
         # Convert TraceEntry models to dicts for JSON storage
         trace_entries = result.get("trace", [])
@@ -120,9 +177,10 @@ async def chat(
             type(e).__name__,
             str(e),
         )
+        clean_error = get_user_facing_error(e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Answer generation failed: {str(e)}",
+            detail=clean_error,
         )
 
     # Step 4: Save the assistant message
@@ -148,6 +206,8 @@ async def chat(
         session_id=session_id,
         answer=final_answer,
         sources=sources,
+        response_type=response_type,
+        verification_status=verification_status,
         grounded=grounded,
         confidence=confidence,
         attempts=attempts,
@@ -191,39 +251,110 @@ async def chat_stream(
         content=request.question,
     )
     
-    # We must await db.commit() here before spinning up the background thread 
-    # to ensure the session and user message are visible, although SQLAlchemy
-    # doesn't strictly need it if the async loop continues to hold the session,
-    # but it is safer since add_message only flushes.
     await db.commit()
 
-    loop = asyncio.get_running_loop()
-    q = asyncio.Queue()
-
-    def stream_callback(event: dict):
-        # Fire-and-forget push to the queue from the synchronous thread
-        loop.call_soon_threadsafe(
-            q.put_nowait,
-            event
-        )
-
-    def run_graph_in_thread(chat_history_data: list[dict]):
-        try:
-            initial_state = get_initial_state(
-                question=request.question,
-                session_id=session_id,
-                chat_history=chat_history_data,
-            )
-            result = compiled_graph.invoke(
-                initial_state,
-                config={"configurable": {"stream_callback": stream_callback}}
-            )
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": result})
-        except Exception as e:
-            logger.error("Streaming generation failed: %s", str(e))
-            loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": str(e)})
+    intent = await conversation_router.classify(request.question)
 
     async def event_generator():
+        if intent != Intent.KNOWLEDGE_QUERY:
+            logger.info("Conversational intent (stream) %s detected, bypassing graph", intent.name)
+            
+            chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+            
+            loop = asyncio.get_running_loop()
+            q = asyncio.Queue()
+            
+            def run_chat_in_thread(history_data: list[dict]):
+                try:
+                    history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in history_data])
+                    prompt = f"## Conversation History\n{history_str}\n\n## User Message\n{request.question}"
+                    
+                    response_text = ""
+                    for chunk in invoke_stream(prompt=prompt, system_instruction=CONVERSATION_SYSTEM_PROMPT):
+                        response_text += chunk
+                        loop.call_soon_threadsafe(q.put_nowait, {"type": "token", "content": chunk})
+                    
+                    loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": response_text})
+                except Exception as e:
+                    logger.error("LLM stream failed: %s", str(e))
+                    clean_error = get_user_facing_error(e)
+                    loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
+                    
+            task = asyncio.create_task(asyncio.to_thread(run_chat_in_thread, chat_history_data))
+            
+            response_text = ""
+            try:
+                while True:
+                    item = await q.get()
+                    if item["type"] == "token":
+                        response_text += item["content"]
+                        yield f"data: {json.dumps(item)}\n\n"
+                    elif item["type"] == "error":
+                        yield f"data: {json.dumps(item)}\n\n"
+                        break
+                    elif item["type"] == "done":
+                        response_text = item.get("result", "")
+                        break
+            finally:
+                trace_entry = TraceEntrySchema(
+                    node="router",
+                    execution_time_ms=0.0,
+                    input_summary=f"query='{request.question}'",
+                    output_summary=f"intent={intent.name}, generated conversational response",
+                    attempt=1,
+                    decision="bypass"
+                )
+                
+                await chat_history.add_message(
+                    db=db,
+                    session_id=session_id,
+                    role="assistant",
+                    content=response_text,
+                    trace_data=[trace_entry.model_dump()]
+                )
+                await db.commit()
+                
+                final_event = {
+                    "type": "done",
+                    "session_id": session_id,
+                    "response_type": "CONVERSATION",
+                    "verification_status": "VERIFIED",
+                    "grounded": True,
+                    "confidence": 1.0,
+                    "attempts": 0,
+                    "sources": [],
+                    "trace_available": True
+                }
+                yield f"data: {json.dumps(final_event)}\n\n"
+                await db.close()
+            return
+            
+        loop = asyncio.get_running_loop()
+        q = asyncio.Queue()
+
+        def stream_callback(event: dict):
+            # Fire-and-forget push to the queue from the synchronous thread
+            loop.call_soon_threadsafe(
+                q.put_nowait,
+                event
+            )
+
+        def run_graph_in_thread(chat_history_data: list[dict]):
+            try:
+                initial_state = get_initial_state(
+                    question=request.question,
+                    session_id=session_id,
+                    chat_history=chat_history_data,
+                )
+                result = compiled_graph.invoke(
+                    initial_state,
+                    config={"configurable": {"stream_callback": stream_callback}}
+                )
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": result})
+            except Exception as e:
+                logger.error("Streaming generation failed: %s", str(e))
+                clean_error = get_user_facing_error(e)
+                loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
         # Fetch chat history before starting the thread
         chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
         # Start the graph execution in a background thread
@@ -244,14 +375,20 @@ async def chat_stream(
                     
                 elif item["type"] == "done":
                     # The graph has finished execution.
-                    result = item["result"]
+                    result = item.get("result", {})
                     final_answer = result.get("final_answer") or result.get("answer") or "Sorry, I could not generate an answer."
                     sources = result.get("sources", [])
                     grounded = result.get("grounded", False)
                     confidence = result.get("confidence", 0.0)
                     attempts = result.get("attempts", 1)
-                    trace_entries = result.get("trace", [])
-                    trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
+                    verification_status = result.get("verification_status", "VERIFIED")
+                    
+                    response_type = "GROUNDED"
+                    if final_answer in (NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE):
+                        response_type = "NO_CONTEXT"
+                    
+                    # Ensure final message is saved in DB
+                    trace_data = result.get("trace")
                     
                     # Save the assistant message with trace
                     await chat_history.add_message(
@@ -277,6 +414,8 @@ async def chat_stream(
                     final_event = {
                         "type": "done",
                         "session_id": session_id,
+                        "response_type": response_type,
+                        "verification_status": verification_status,
                         "grounded": grounded,
                         "confidence": confidence,
                         "attempts": attempts,

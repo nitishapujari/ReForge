@@ -10,11 +10,22 @@ GENERATOR_SYSTEM_PROMPT = """You are ReForge, a helpful AI assistant that answer
 ## Rules
 1. ONLY use information from the provided context documents to answer.
 2. If the context does not contain enough information to answer, say so clearly.
-3. Be concise, accurate, and well-structured.
-4. Cite source filenames when referencing specific information.
-5. Never fabricate information that is not in the context.
-6. If asked about something completely unrelated to the context, politely redirect.
-7. You may use the Conversation History to understand pronouns or context for the Current Question, but base your factual answers ONLY on the Context Documents."""
+3. Be concise, accurate, and well-structured. Answer naturally as if explaining the topic directly to the user.
+4. Synthesize the information rather than simply extracting text verbatim. Merge similar facts from different documents.
+5. Use rich formatting automatically when appropriate. Use headings for distinct sections, bullet points or numbered lists for sequential or grouped information, and markdown tables for comparisons or structured data.
+6. NEVER use phrases like "According to the context documents", "Based on Source X", or mention the filenames. The sources are displayed automatically elsewhere.
+7. Never fabricate information that is not in the context.
+8. If asked about something completely unrelated to the context, politely redirect.
+9. You may use the Conversation History to understand pronouns or context for the Current Question, but base your factual answers ONLY on the Context Documents."""
+
+CONVERSATION_SYSTEM_PROMPT = """You are ReForge, a friendly, intelligent, and helpful AI assistant. 
+Your personality is professional but approachable, knowledgeable, and engaging.
+
+## Rules
+1. Respond to the user's conversational message naturally.
+2. Be concise. Avoid unnecessarily long responses for simple greetings.
+3. You have access to the recent conversation history to provide context-aware responses.
+4. Do not attempt to retrieve documents or state that you cannot access documents here. If the user is asking a factual question that requires retrieval, you can still answer if it's general knowledge, but keep it brief and conversational."""
 
 GENERATOR_USER_PROMPT = """## Conversation History
 {history}
@@ -26,7 +37,8 @@ GENERATOR_USER_PROMPT = """## Conversation History
 {question}
 
 ## Instructions
-Answer the Current Question based ONLY on the context documents above. If the context does not contain relevant information, clearly state that the information is not available in the uploaded documents."""
+Answer the Current Question naturally based ONLY on the context documents above. Do not explicitly state that you are using context documents to answer. If the context does not contain relevant information, you MUST reply with exactly this phrase and nothing else: "I couldn't find any relevant information about this in the uploaded documents."
+"""
 
 NO_DOCUMENTS_RESPONSE = (
     "I don't have any documents to reference yet. "
@@ -35,9 +47,7 @@ NO_DOCUMENTS_RESPONSE = (
 )
 
 NO_RELEVANT_DOCS_RESPONSE = (
-    "I couldn't find any relevant information in the uploaded documents "
-    "to answer your question. Try rephrasing your question or uploading "
-    "additional documents that cover this topic."
+    "I couldn't find any relevant information about this in the uploaded documents."
 )
 
 CRITIC_SYSTEM_PROMPT = """You are a strict evaluator grading an AI's answer against source documents.
