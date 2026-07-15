@@ -20,6 +20,7 @@ class HealthResponse(BaseModel):
 
     status: str = Field(..., examples=["healthy"])
     active_provider: str = Field(..., description="The currently active LLM provider (e.g., gemini, groq)", examples=["gemini"])
+    active_model: str = Field(..., description="The currently active model (e.g., gemini-2.5-flash)", examples=["gemini-2.5-flash"])
     llm_status: str = Field(..., examples=["connected"])
     chromadb: str = Field(..., examples=["connected"])
     database: str = Field(..., examples=["connected"])

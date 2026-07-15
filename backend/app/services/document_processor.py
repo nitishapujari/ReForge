@@ -137,37 +137,39 @@ def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
     return [{"text": text, "page_number": 1}]
 
 
-def process_document(
-    document_id: str,
+    return [{"text": text, "page_number": 1}]
+
+
+def extract_document_text(
     filename: str,
     file_content: bytes,
+) -> list[dict[str, str | int]]:
+    """
+    Extract text pages from a document (PDF or TXT).
+    """
+    validate_file(filename, len(file_content))
+    
+    ext = Path(filename).suffix.lower()
+    if ext == ".pdf":
+        return extract_text_from_pdf(file_content)
+    elif ext == ".txt":
+        return extract_text_from_txt(file_content)
+    else:
+        raise DocumentProcessingError(f"Unsupported file type: {ext}")
+
+
+def chunk_document_text(
+    document_id: str,
+    filename: str,
+    pages: list[dict[str, str | int]],
     file_hash: str | None = None,
 ) -> tuple[str, list[str], list[str], list[dict]]:
     """
-    Process a document: extract text, chunk it, and prepare metadata.
-
-    Args:
-        document_id: Pre-generated UUID for the document.
-        filename: Original filename.
-        file_content: Raw file bytes.
-        file_hash: SHA-256 hash of the file.
-
-    Returns:
-        Tuple of (document_id, chunk_ids, chunk_texts, chunk_metadatas).
+    Chunk extracted text and prepare metadata.
     """
-    # Validate
-    validate_file(filename, len(file_content))
-
     created_at = datetime.now(timezone.utc).isoformat()
 
-    # Extract text based on file type
-    ext = Path(filename).suffix.lower()
-    if ext == ".pdf":
-        pages = extract_text_from_pdf(file_content)
-    elif ext == ".txt":
-        pages = extract_text_from_txt(file_content)
-    else:
-        raise DocumentProcessingError(f"Unsupported file type: {ext}")
+
 
     # Initialize the text splitter
     splitter = RecursiveCharacterTextSplitter(
@@ -209,7 +211,7 @@ def process_document(
             chunk_metadatas.append(meta)
 
     logger.info(
-        "Processed '%s': document_id=%s, pages=%d, chunks=%d",
+        "Chunked '%s': document_id=%s, pages=%d, chunks=%d",
         filename,
         document_id,
         len(pages),
@@ -217,3 +219,16 @@ def process_document(
     )
 
     return document_id, chunk_ids, chunk_texts, chunk_metadatas
+
+
+def process_document(
+    document_id: str,
+    filename: str,
+    file_content: bytes,
+    file_hash: str | None = None,
+) -> tuple[str, list[str], list[str], list[dict]]:
+    """
+    Legacy monolithic function to process a document.
+    """
+    pages = extract_document_text(filename, file_content)
+    return chunk_document_text(document_id, filename, pages, file_hash)

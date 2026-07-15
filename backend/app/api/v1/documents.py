@@ -37,21 +37,41 @@ async def _process_and_ingest_document(
     file_hash: str | None,
 ) -> None:
     """
-    Background task: process document (chunking) and add to vector store.
+    Background task: process document (extract, chunk, embed) and add to vector store.
     Updates SQLite status upon completion or failure.
     """
     factory = get_session_factory()
+    
+    async def set_status(status: str, chunk_count: int = 0):
+        async with factory() as session:
+            doc = await session.get(Document, document_id)
+            if doc:
+                doc.status = status
+                if chunk_count > 0:
+                    doc.chunk_count = chunk_count
+                await session.commit()
+
     try:
-        # Process document in a separate thread
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=document_id,
+        # Extract text
+        await set_status("extracting")
+        pages = await asyncio.to_thread(
+            document_processor.extract_document_text,
             filename=filename,
             file_content=file_content,
+        )
+        
+        # Chunk text
+        await set_status("chunking")
+        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+            document_processor.chunk_document_text,
+            document_id=document_id,
+            filename=filename,
+            pages=pages,
             file_hash=file_hash,
         )
         
         # Run vector store insertion in a separate thread to prevent blocking the event loop
+        await set_status("embedding")
         await asyncio.to_thread(
             vectorstore.add_documents,
             ids=chunk_ids,
@@ -65,12 +85,7 @@ async def _process_and_ingest_document(
         )
         
         # Update SQLite status
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.status = "completed"
-                doc.chunk_count = len(chunk_ids)
-                await session.commit()
+        await set_status("completed", len(chunk_ids))
                 
     except Exception as e:
         logger.error(
@@ -96,17 +111,39 @@ async def _replace_document(
     Background task: replace an existing document's vectors and update SQLite.
     """
     factory = get_session_factory()
+    
+    async def set_status(status: str, chunk_count: int = 0):
+        async with factory() as session:
+            doc = await session.get(Document, document_id)
+            if doc:
+                doc.status = status
+                doc.filename = filename
+                doc.file_hash = file_hash
+                if chunk_count > 0:
+                    doc.chunk_count = chunk_count
+                await session.commit()
+
     try:
-        # Process new document
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=document_id,
+        # Extract text
+        await set_status("extracting")
+        pages = await asyncio.to_thread(
+            document_processor.extract_document_text,
             filename=filename,
             file_content=file_content,
+        )
+        
+        # Chunk text
+        await set_status("chunking")
+        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+            document_processor.chunk_document_text,
+            document_id=document_id,
+            filename=filename,
+            pages=pages,
             file_hash=file_hash,
         )
         
         # Delete old vectors
+        await set_status("embedding")
         await asyncio.to_thread(vectorstore.delete_by_document_id, document_id)
         
         # Add new vectors
@@ -124,14 +161,7 @@ async def _replace_document(
         )
         
         # Update SQLite
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.filename = filename
-                doc.file_hash = file_hash
-                doc.status = "completed"
-                doc.chunk_count = len(chunk_ids)
-                await session.commit()
+        await set_status("completed", len(chunk_ids))
                 
     except Exception as e:
         logger.error(
@@ -270,6 +300,33 @@ async def replace_document(
         status="processing",
         message="Document replacement queued for processing.",
     )
+
+
+@router.get(
+    "/{document_id}",
+    response_model=DocumentResponse,
+    summary="Get Document",
+    description="Retrieve the current status of an uploaded document.",
+)
+async def get_document(
+    document_id: str,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    """Get document details and current processing status."""
+    doc = await db.get(Document, document_id)
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document {document_id} not found.",
+        )
+        
+    return {
+        "document_id": doc.id,
+        "filename": doc.filename,
+        "chunk_count": doc.chunk_count,
+        "created_at": doc.created_at.isoformat(),
+        "status": doc.status,
+    }
 
 
 @router.get(

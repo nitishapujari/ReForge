@@ -66,6 +66,7 @@ async def health_check(
     llm_status = "connected" if check_llm_health() else "error"
     settings = get_settings()
     active_provider = settings.LLM_PROVIDER
+    active_model = settings.GROQ_MODEL if active_provider == "groq" else settings.GEMINI_MODEL
 
     # Determine overall status
     statuses = [llm_status, chromadb_status, database_status]
@@ -88,6 +89,7 @@ async def health_check(
     return HealthResponse(
         status=overall,
         active_provider=active_provider,
+        active_model=active_model,
         llm_status=llm_status,
         chromadb=chromadb_status,
         database=database_status,
