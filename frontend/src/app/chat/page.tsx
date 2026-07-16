@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2 } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -26,6 +27,57 @@ type Message = {
     sources?: Array<{ id: string, content: string, metadata: any }>
     trace_available?: boolean
   }
+}
+
+function ThoughtProcess() {
+  const [phase, setPhase] = useState(0)
+
+  useEffect(() => {
+    const sequence = [
+      { text: "Scanning knowledge base...", duration: 800 },
+      { text: "Evaluating context...", duration: 800 },
+      { text: "Verifying relevance...", duration: 800 },
+      { text: "Synthesizing response...", duration: 2000 }
+    ]
+    let current = 0
+    let timeout: NodeJS.Timeout
+    
+    const run = () => {
+      setPhase(current)
+      timeout = setTimeout(() => {
+        current = (current + 1) % sequence.length
+        run()
+      }, sequence[current].duration)
+    }
+    
+    run()
+    return () => clearTimeout(timeout)
+  }, [])
+
+  const phrases = [
+    "Scanning knowledge base...",
+    "Evaluating context...",
+    "Verifying relevance...",
+    "Synthesizing response..."
+  ]
+
+  return (
+    <div className="h-6 flex items-center px-1 overflow-hidden">
+      <AnimatePresence mode="popLayout">
+        <motion.div
+          key={phase}
+          initial={{ y: 15, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -15, opacity: 0, transition: { duration: 0.1 } }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="text-xs font-mono text-primary/70 flex items-center gap-2"
+        >
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          {phrases[phase]}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
 }
 
 export default function ChatPage() {
@@ -238,20 +290,29 @@ export default function ChatPage() {
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6" ref={scrollRef}>
         <div className="max-w-3xl mx-auto space-y-6 pb-24">
+          <AnimatePresence initial={false}>
           {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-[50vh] text-center text-muted-foreground space-y-4">
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+              className="flex flex-col items-center justify-center h-[50vh] text-center text-muted-foreground space-y-4"
+            >
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shadow-inner">
                 <Bot className="h-8 w-8 text-primary" />
               </div>
               <div>
                 <p className="text-lg font-medium text-foreground">How can I help you today?</p>
                 <p className="text-sm">Ask a question and I'll search your documents.</p>
               </div>
-            </div>
+            </motion.div>
           ) : (
             messages.map((message) => (
-              <div
+              <motion.div
                 key={message.id}
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 className={cn(
                   "flex gap-4",
                   message.role === "user" ? "justify-end" : "justify-start"
@@ -286,11 +347,7 @@ export default function ChatPage() {
                             {message.content}
                           </ReactMarkdown>
                         ) : message.status === "generating" ? (
-                          <div className="flex items-center gap-2 h-6">
-                            <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
-                            <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
-                            <span className="w-1.5 h-1.5 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
-                          </div>
+                          <ThoughtProcess />
                         ) : null}
                       </div>
                     ) : (
@@ -389,14 +446,20 @@ export default function ChatPage() {
                     </AvatarFallback>
                   </Avatar>
                 )}
-              </div>
+              </motion.div>
             ))
           )}
+          </AnimatePresence>
         </div>
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-10 pb-4 px-4 sm:px-6 z-20">
-        <div className="max-w-3xl mx-auto relative flex items-end gap-2 bg-card border rounded-2xl p-2 shadow-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-all">
+        <motion.div 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="max-w-3xl mx-auto relative flex items-end gap-2 bg-card/80 backdrop-blur-xl border rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-lg focus-within:shadow-primary/10 transition-all duration-300"
+        >
           <input 
             type="file" 
             ref={fileInputRef} 
@@ -441,7 +504,7 @@ export default function ChatPage() {
             )}
             <span className="sr-only">Send message</span>
           </Button>
-        </div>
+        </motion.div>
       </div>
     </div>
   )

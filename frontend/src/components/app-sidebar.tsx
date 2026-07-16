@@ -4,6 +4,7 @@ import * as React from "react"
 import { MessageSquare, Library, Upload, Settings, Activity, ChevronsUpDown, User2, Monitor, Sun, Moon, Info } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { motion } from "framer-motion"
 import { Logo } from "@/components/logo"
 import { useUser } from "@/contexts/user-context"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -60,7 +61,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useUser()
 
   return (
-    <Sidebar {...props}>
+    <Sidebar {...props} className="bg-background/40 backdrop-blur-xl border-r shadow-lg border-sidebar-border/50">
       <SidebarHeader className="p-4 border-b">
         <Link href="/" className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition-opacity">
           <div className="flex items-center justify-center w-8 h-8 shrink-0">
@@ -74,17 +75,31 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    render={<Link href={item.url} />}
-                    isActive={pathname?.startsWith(item.url)}
-                  >
-                    <item.icon />
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {navItems.map((item) => {
+                const isActive = pathname?.startsWith(item.url)
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton 
+                      render={<Link href={item.url} className="relative overflow-hidden" />}
+                      isActive={isActive}
+                      className={`relative z-0 group transition-all duration-300 ${isActive ? 'text-primary' : 'hover:text-foreground text-muted-foreground'}`}
+                    >
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeNav"
+                          className="absolute inset-0 bg-primary/10 rounded-md -z-10"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        />
+                      )}
+                      <item.icon className="w-5 h-5 transition-transform group-hover:scale-110" />
+                      <span className="font-medium">{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

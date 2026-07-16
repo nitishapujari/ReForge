@@ -3,6 +3,20 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Server, Search, RefreshCw, Eye, FileText, CheckCircle2, AlertCircle } from "lucide-react"
+import { motion } from "framer-motion"
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1 }
+  }
+}
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+}
 
 export default function SystemConfigurationPage() {
   const [healthInfo, setHealthInfo] = useState<{
@@ -41,18 +55,29 @@ export default function SystemConfigurationPage() {
 
   return (
     <div className="flex-1 p-8 max-w-4xl mx-auto w-full">
-      <div className="mb-8">
+      <motion.div 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className="mb-8"
+      >
         <h1 className="text-3xl font-bold tracking-tight">System Configuration</h1>
         <p className="text-muted-foreground mt-1">
           Current runtime overview for the ReForge pipeline.
         </p>
-      </div>
+      </motion.div>
 
-      <div className="grid gap-6">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="grid gap-6"
+      >
         
         {/* 1. AI Engine */}
-        <Card>
-          <CardHeader>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Server className="w-5 h-5 text-primary" /> AI Engine
             </CardTitle>
@@ -72,11 +97,13 @@ export default function SystemConfigurationPage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
 
         {/* 2. Retrieval Pipeline */}
-        <Card>
-          <CardHeader>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Search className="w-5 h-5 text-blue-500" /> Retrieval Pipeline
             </CardTitle>
@@ -86,11 +113,13 @@ export default function SystemConfigurationPage() {
               Every question is answered using your uploaded documents. Relevant document chunks are retrieved before answer generation to ensure grounded responses.
             </p>
           </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
 
         {/* 3. Self-Healing Workflow */}
-        <Card>
-          <CardHeader>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <RefreshCw className="w-5 h-5 text-purple-500" /> Self-Healing Workflow
             </CardTitle>
@@ -100,11 +129,13 @@ export default function SystemConfigurationPage() {
               If the system detects that an answer is incomplete, unsupported, or lacks sufficient context, it automatically performs another retrieval cycle before generating the final response.
             </p>
           </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
 
         {/* 4. Explainability */}
-        <Card>
-          <CardHeader>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Eye className="w-5 h-5 text-emerald-500" /> Explainability
             </CardTitle>
@@ -123,11 +154,13 @@ export default function SystemConfigurationPage() {
               <p className="text-sm text-muted-foreground">The system prevents hallucination by strictly refusing to answer questions outside the scope of your uploaded documents.</p>
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
 
         {/* 5. Supported Documents */}
-        <Card>
-          <CardHeader>
+        <motion.div variants={itemVariants} whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
+          <Card className="hover:shadow-md transition-all duration-300">
+            <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-orange-500" /> Supported Formats
             </CardTitle>
@@ -144,9 +177,10 @@ export default function SystemConfigurationPage() {
               </div>
             </div>
           </CardContent>
-        </Card>
+          </Card>
+        </motion.div>
 
-      </div>
+      </motion.div>
     </div>
   )
 }

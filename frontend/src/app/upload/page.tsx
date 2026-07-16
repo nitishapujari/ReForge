@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 
 type TaskStatus = "idle" | "uploading" | "extracting text" | "chunking document" | "generating embeddings" | "saving document" | "indexed successfully" | "duplicate" | "error" | "canceled"
 
@@ -24,6 +25,24 @@ const STAGES: TaskStatus[] = [
   "generating embeddings",
   "saving document"
 ]
+
+function DataParticles({ active }: { active: boolean }) {
+  if (!active) return null
+
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl opacity-30 mix-blend-screen">
+       {[...Array(15)].map((_, i) => (
+         <motion.div
+           key={i}
+           initial={{ x: -20, y: Math.random() * 80 + 10, opacity: 0, scale: 0, rotate: 0 }}
+           animate={{ x: 800, opacity: [0, 0.8, 0], scale: [0, 1.5, 0], rotate: 180 }}
+           transition={{ duration: 1.5 + Math.random() * 2, repeat: Infinity, delay: Math.random() * 2, ease: "linear" }}
+           className="absolute w-1.5 h-1.5 bg-current shadow-[0_0_10px_currentColor] rounded-sm"
+         />
+       ))}
+    </div>
+  )
+}
 
 export default function UploadPage() {
   const [tasks, setTasks] = useState<UploadTask[]>([])
@@ -269,9 +288,11 @@ export default function UploadPage() {
         <p className="text-muted-foreground">Select multiple PDF or TXT files to add to your documents.</p>
       </div>
 
-      <div 
+      <motion.div 
+        animate={isDragging ? { scale: 1.02 } : { scale: 1 }}
+        transition={{ type: "spring", stiffness: 300, damping: 20 }}
         className={`w-full max-w-3xl border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-colors cursor-pointer mb-8
-          ${isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'}`}
+          ${isDragging ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'}`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -298,12 +319,22 @@ export default function UploadPage() {
             if (fileInputRef.current) fileInputRef.current.value = ""
           }}
         />
-      </div>
+      </motion.div>
 
       <div className="w-full max-w-3xl space-y-4">
+        <AnimatePresence mode="popLayout">
         {tasks.map(task => (
-          <div key={task.id} className={`border rounded-xl p-4 flex flex-col gap-4 ${getStatusColor(task.status)} transition-colors`}>
-            <div className="flex items-center justify-between">
+          <motion.div 
+            layout
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            key={task.id} 
+            className={`border rounded-xl p-4 flex flex-col gap-4 ${getStatusColor(task.status)} transition-colors relative overflow-hidden`}
+          >
+            <DataParticles active={!["idle", "error", "duplicate", "canceled", "indexed successfully"].includes(task.status)} />
+            
+            <div className="flex items-center justify-between relative z-10">
               <div className="flex items-center gap-4 overflow-hidden">
                 <div className="w-10 h-10 shrink-0 bg-background/50 rounded-lg flex items-center justify-center border shadow-sm">
                   <FileText className="w-5 h-5 opacity-80" />
@@ -354,10 +385,17 @@ export default function UploadPage() {
 
             {/* Progress Bar */}
             {(!["idle", "error", "duplicate", "canceled"].includes(task.status)) && (
-              <div className="w-full bg-background/50 rounded-full h-1.5 overflow-hidden">
-                <div 
-                  className="bg-current h-full transition-all duration-500 ease-out" 
-                  style={{ width: `${task.progress}%` }}
+              <div className="w-full bg-background/50 rounded-full h-1.5 overflow-hidden relative">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${task.progress}%` }}
+                  transition={{ ease: "easeOut", duration: 0.5 }}
+                  className="bg-current h-full absolute left-0 top-0" 
+                />
+                <motion.div 
+                  animate={{ x: ["-100%", "200%"] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                  className="absolute top-0 bottom-0 left-0 w-1/2 bg-gradient-to-r from-transparent via-white/30 dark:via-white/20 to-transparent"
                 />
               </div>
             )}
@@ -373,8 +411,9 @@ export default function UploadPage() {
                 <p>{task.duplicateData.message}</p>
               </div>
             )}
-          </div>
+          </motion.div>
         ))}
+        </AnimatePresence>
       </div>
     </div>
   )
