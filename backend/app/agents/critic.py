@@ -50,23 +50,27 @@ def critique_node(state: GraphState) -> dict:
     attempt = state.get("attempts", 1)
 
     # If no answer was generated (e.g., fallback), we don't need a deep critique
-    if not answer or answer.startswith("I don't have any documents") or answer.startswith("I couldn't find any relevant"):
+    if (not answer or 
+        answer.startswith("I don't have any documents") or 
+        answer.startswith("No results found in uploaded docs but here are a few things I know:") or
+        answer.startswith("No results found in uploaded docs and I do not have confident general knowledge about this.")):
         logger.info("Skipping critique for fallback answer.")
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         trace_entry = TraceEntry(
             node="critique",
             execution_time_ms=round(elapsed_ms, 2),
             input_summary=f"answer_len={len(answer)} (fallback)",
-            output_summary="skipped evaluation",
+            output_summary="skipped evaluation - accepted general knowledge fallback",
             attempt=attempt,
-            decision=None,
+            decision="accept",
         )
         return {
-            "grounded": False,
-            "confidence": 0.0,
-            "critic_feedback": "Fallback answer due to missing context.",
+            "grounded": True, # Set to True so the decision node accepts it immediately
+            "confidence": 1.0,
+            "critic_feedback": "General knowledge fallback provided.",
             "unsupported_claims": [],
-            "missing_information": ["No relevant information found in context"],
+            "missing_information": [],
+            "verification_status": "VERIFIED",
             "trace": state.get("trace", []) + [trace_entry],
         }
 

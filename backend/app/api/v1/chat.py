@@ -14,7 +14,7 @@ import json
 from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
 from app.models.schemas import ChatRequest, ChatResponse, TraceEntrySchema
-from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE, CONVERSATION_SYSTEM_PROMPT
+from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE, CONVERSATION_SYSTEM_PROMPT, NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE
 from app.services import chat_history
 from app.services.llm import invoke, invoke_stream
 from app.services.conversation_router import router as conversation_router, Intent
@@ -163,9 +163,11 @@ async def chat(
         verification_status = result.get("verification_status", "VERIFIED")
         
         response_type = "GROUNDED"
-        if final_answer in (NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE):
+        if final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE) or final_answer.startswith(NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE) or final_answer == NO_DOCUMENTS_RESPONSE:
             response_type = "NO_CONTEXT"
-        
+            sources = [] # Don't show irrelevant sources
+            grounded = False
+            confidence = 0.0        
         # Convert TraceEntry models to dicts for JSON storage
         trace_entries = result.get("trace", [])
         trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
@@ -211,6 +213,7 @@ async def chat(
         grounded=grounded,
         confidence=confidence,
         attempts=attempts,
+        trace_data=trace_data,
     )
 
 
@@ -384,9 +387,11 @@ async def chat_stream(
                     verification_status = result.get("verification_status", "VERIFIED")
                     
                     response_type = "GROUNDED"
-                    if final_answer in (NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE):
+                    if final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE) or final_answer.startswith(NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE) or final_answer == NO_DOCUMENTS_RESPONSE:
                         response_type = "NO_CONTEXT"
-                    
+                        sources = []
+                        grounded = False
+                        confidence = 0.0                    
                     # Ensure final message is saved in DB
                     trace_data = result.get("trace")
                     
@@ -420,7 +425,8 @@ async def chat_stream(
                         "confidence": confidence,
                         "attempts": attempts,
                         "sources": sources_dump,
-                        "trace_available": bool(trace_data)
+                        "trace_available": bool(trace_data),
+                        "trace_data": trace_data
                     }
                     yield f"data: {json.dumps(final_event)}\n\n"
                     break

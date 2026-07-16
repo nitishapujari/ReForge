@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2 } from "lucide-react"
+import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ type Message = {
     attempts?: number
     sources?: Array<{ id: string, content: string, metadata: any }>
     trace_available?: boolean
+    trace_data?: any[]
   }
 }
 
@@ -85,6 +86,13 @@ export default function ChatPage() {
   const [input, setInput] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [sessionId, setSessionId] = useState<string>("")
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const handleCopy = (id: string, content: string) => {
+    navigator.clipboard.writeText(content)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
+  }
 
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -233,6 +241,7 @@ export default function ChatPage() {
                               attempts: data.attempts,
                               sources: data.sources,
                               trace_available: data.trace_available,
+                              trace_data: data.trace_data,
                             },
                           }
                         : msg
@@ -301,9 +310,28 @@ export default function ChatPage() {
               <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shadow-inner">
                 <Bot className="h-8 w-8 text-primary" />
               </div>
-              <div>
-                <p className="text-lg font-medium text-foreground">How can I help you today?</p>
+              <div className="mb-6">
+                <p className="text-xl font-medium text-foreground mb-1">How can I help you today?</p>
                 <p className="text-sm">Ask a question and I'll search your documents.</p>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full px-4 mt-6">
+                {[
+                  "Summarize the key points from my documents",
+                  "What are the main applications of a DBMS?",
+                  "Explain the architecture mentioned in the notes",
+                  "Can you find any specific dates or names?"
+                ].map((query, i) => (
+                  <button 
+                    key={i} 
+                    onClick={() => {
+                      setInput(query);
+                    }}
+                    className="text-left px-4 py-3 rounded-2xl bg-card border border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary hover:shadow-md transition-all text-sm shadow-sm group"
+                  >
+                    <span className="text-foreground group-hover:text-primary transition-colors">{query}</span>
+                  </button>
+                ))}
               </div>
             </motion.div>
           ) : (
@@ -326,7 +354,7 @@ export default function ChatPage() {
                   </Avatar>
                 )}
                 
-                <div className="flex flex-col gap-2 max-w-[85%] sm:max-w-[75%]">
+                <div className="flex flex-col gap-2 max-w-[85%] sm:max-w-[75%] group/message">
                   <div
                     className={cn(
                       "px-4 py-3 rounded-2xl",
@@ -358,10 +386,34 @@ export default function ChatPage() {
                   {message.role === "assistant" && message.metadata && message.status !== "error" && (
                     <div className="flex flex-wrap items-center gap-2 mt-1">
                       {message.metadata.response_type === "GROUNDED" && message.metadata.attempts && message.metadata.attempts > 1 && (
-                        <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20">
-                          <RefreshCw className="h-3 w-3 mr-1" />
-                          Self-Healed ({message.metadata.attempts} attempts)
-                        </Badge>
+                        <div className="w-full">
+                          <details className="group/trace text-xs">
+                            <summary className="cursor-pointer flex items-center gap-1 w-max list-none">
+                              <Badge variant="outline" className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30 shadow-[0_0_8px_rgba(249,115,22,0.15)] select-none hover:bg-orange-500/20 transition-colors">
+                                <RefreshCw className="h-3 w-3 mr-1" />
+                                Self-Healed ({message.metadata.attempts} attempts) 
+                                <span className="ml-1.5 opacity-60 group-open/trace:rotate-180 transition-transform">▼</span>
+                              </Badge>
+                            </summary>
+                            <div className="mt-2 pl-3 border-l-2 border-orange-500/20 space-y-2.5 py-1 mb-2 bg-muted/30 rounded-r-lg p-2">
+                              {message.metadata.trace_data?.filter((t: any) => t.node === "critic").map((trace: any, i: number) => (
+                                <div key={i} className="text-muted-foreground flex gap-2">
+                                  <div className="shrink-0 text-orange-500/80 mt-0.5"><AlertTriangle className="h-3.5 w-3.5" /></div>
+                                  <div>
+                                    <div className="font-semibold text-orange-600/90 dark:text-orange-400/90 text-[10px] uppercase tracking-wider mb-0.5">Attempt {trace.attempt} Rejected</div>
+                                    <div className="text-[11px] leading-relaxed bg-background/50 p-1.5 rounded border border-border/50">{trace.output_summary}</div>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="text-muted-foreground flex gap-2">
+                                <div className="shrink-0 text-green-500/80 mt-0.5"><CheckCircle2 className="h-3.5 w-3.5" /></div>
+                                <div>
+                                  <div className="font-semibold text-green-600/90 dark:text-green-400/90 text-[10px] uppercase tracking-wider mt-0.5">Attempt {message.metadata.attempts} Grounded</div>
+                                </div>
+                              </div>
+                            </div>
+                          </details>
+                        </div>
                       )}
                       {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status === "UNAVAILABLE" ? (
                         <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
@@ -369,7 +421,8 @@ export default function ChatPage() {
                           Grounding verification unavailable
                         </Badge>
                       ) : message.metadata.response_type === "GROUNDED" && message.metadata.grounded ? (
-                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20">
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/30 shadow-[0_0_10px_rgba(34,197,94,0.2)] dark:shadow-[0_0_10px_rgba(74,222,128,0.15)] relative overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-green-400/10 to-transparent -translate-x-full animate-[shimmer_2s_infinite]"></div>
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Grounded
                         </Badge>
@@ -410,12 +463,26 @@ export default function ChatPage() {
                                         <span className="hidden group-open:inline">▼ Hide Matches</span>
                                       </summary>
                                       <div className="mt-2 space-y-3 pl-2 border-l-2 border-primary/20">
-                                        {src.chunks.map((chunk: any, cIdx: number) => (
-                                          <div key={cIdx} className="text-muted-foreground">
-                                            <span className="font-semibold text-primary/70 mr-1">Match {cIdx + 1}:</span>
-                                            <span className="break-words whitespace-pre-wrap">{chunk.content_preview}</span>
-                                          </div>
-                                        ))}
+                                        {src.chunks.map((chunk: any, cIdx: number) => {
+                                          // Clean up the text: replace all newlines and excessive spaces with a single space.
+                                          const cleanedText = chunk.content_preview
+                                            .replace(/[\r\n]+/g, ' ')
+                                            .replace(/\s{2,}/g, ' ')
+                                            .trim();
+                                          
+                                          return (
+                                            <div key={cIdx} className="text-muted-foreground bg-muted/50 rounded-lg p-3 mt-2 mb-3 border border-border/50 shadow-sm relative overflow-hidden group/chunk">
+                                              <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary/40 group-hover/chunk:bg-primary transition-colors"></div>
+                                              <div className="font-semibold text-foreground/80 text-[10px] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                                <FileText className="h-3 w-3 text-primary/60" />
+                                                Match {cIdx + 1}
+                                              </div>
+                                              <div className="break-words whitespace-pre-wrap leading-relaxed text-[11px] font-mono text-muted-foreground">
+                                                {cleanedText}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     </details>
                                   ) : (
@@ -435,6 +502,33 @@ export default function ChatPage() {
                     <div className="text-xs text-destructive flex items-center">
                       <AlertTriangle className="h-3 w-3 mr-1" />
                       Failed to generate response.
+                    </div>
+                  )}
+
+                  {/* Message Action Bar */}
+                  {message.role === "assistant" && message.status === "done" && (
+                    <div className="opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md"
+                        onClick={() => handleCopy(message.id, message.content)}
+                      >
+                        {copiedId === message.id ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
+                        {copiedId === message.id ? "Copied" : "Copy"}
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md">
+                        <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
+                      </Button>
+                      <div className="flex items-center gap-0 border rounded-md overflow-hidden bg-background ml-1">
+                        <Button variant="ghost" size="icon" className="h-6 w-7 rounded-none text-muted-foreground hover:text-green-600 hover:bg-green-500/10" title="Good response">
+                          <ThumbsUp className="h-3 w-3" />
+                        </Button>
+                        <div className="w-px h-3 bg-border"></div>
+                        <Button variant="ghost" size="icon" className="h-6 w-7 rounded-none text-muted-foreground hover:text-destructive hover:bg-destructive/10" title="Bad response">
+                          <ThumbsDown className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -458,7 +552,7 @@ export default function ChatPage() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="max-w-3xl mx-auto relative flex items-end gap-2 bg-card/80 backdrop-blur-xl border rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-lg focus-within:shadow-primary/10 transition-all duration-300"
+          className="max-w-3xl mx-auto relative flex items-end gap-2 bg-background/60 backdrop-blur-2xl border border-primary/20 rounded-[2rem] p-2 shadow-xl hover:shadow-primary/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-2xl focus-within:shadow-primary/20 transition-all duration-300"
         >
           <input 
             type="file" 

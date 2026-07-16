@@ -24,9 +24,9 @@ class ConversationRouter:
         # Stage 1: Fast path regexes for extremely common inputs (optimization only)
         # We only catch obvious one-word or very short greetings to save LLM calls.
         fast_patterns = [
-            r"^\s*(hi|hello|hey|yo|gm|morning|good morning|what's up|how's it going)\s*$",
-            r"^\s*(thanks|thank you|appreciate it|cheers)\s*$",
-            r"^\s*(bye|goodbye|cya|take care|see you|good night)\s*$",
+            r"^\s*(hi|hello|hey|yo|gm|morning|good morning|what's up|how's it going|greetings)[\s\!\?\.\,]*$",
+            r"^\s*(thanks|thank you|appreciate it|cheers|awesome|great work|good job)[\s\!\?\.\,]*$",
+            r"^\s*(bye|goodbye|cya|take care|see you|good night)[\s\!\?\.\,]*$",
         ]
         self.compiled_fast_patterns = [re.compile(p, re.IGNORECASE) for p in fast_patterns]
 

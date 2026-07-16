@@ -102,6 +102,9 @@ class ChatResponse(BaseModel):
     attempts: int = Field(
         ..., description="Number of retrieval-generation attempts.", examples=[1]
     )
+    trace_data: list[dict] | None = Field(
+        default=None, description="Detailed trace execution data."
+    )
 
 
 # =============================================================================
