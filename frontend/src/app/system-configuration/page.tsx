@@ -1,32 +1,41 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Cpu, Search, Activity, ShieldCheck, FileText } from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Server, Search, RefreshCw, Eye, FileText, CheckCircle2, AlertCircle } from "lucide-react"
 
 export default function SystemConfigurationPage() {
-  const [provider, setProvider] = useState<string>("Loading...")
-  const [model, setModel] = useState<string>("...")
-  const [status, setStatus] = useState<string>("Checking...")
+  const [healthInfo, setHealthInfo] = useState<{
+    provider: string
+    model: string
+    status: string
+  } | null>(null)
+  
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch("/api/v1/health")
       .then(res => res.json())
       .then(data => {
         if (data.active_provider) {
-          const name = data.active_provider.charAt(0).toUpperCase() + data.active_provider.slice(1)
-          setProvider(name)
-          setModel(data.active_model || "")
-          setStatus("Online")
-        } else {
-          setProvider("Unknown")
-          setStatus("Offline")
+          const providerName = data.active_provider.charAt(0).toUpperCase() + data.active_provider.slice(1)
+          const isOnline = data.status === "healthy"
+          setHealthInfo({
+            provider: providerName,
+            model: data.llm || "Unknown",
+            status: isOnline ? "Online" : "Degraded"
+          })
         }
       })
       .catch(() => {
-        setProvider("Error")
-        setStatus("Offline")
+        setHealthInfo({
+          provider: "Unknown",
+          model: "Unknown",
+          status: "Offline"
+        })
+      })
+      .finally(() => {
+        setLoading(false)
       })
   }, [])
 
@@ -35,35 +44,31 @@ export default function SystemConfigurationPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">System Configuration</h1>
         <p className="text-muted-foreground mt-1">
-          Current runtime settings and system architecture.
+          Current runtime overview for the ReForge pipeline.
         </p>
       </div>
 
       <div className="grid gap-6">
+        
         {/* 1. AI Engine */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-primary" /> AI Engine
+              <Server className="w-5 h-5 text-primary" /> AI Engine
             </CardTitle>
+            <CardDescription>
+              The active language model driving ReForge.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">Provider</span>
-                <p className="text-lg font-semibold">{provider}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-muted/30 p-4 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1 uppercase font-semibold">Provider</p>
+                <p className="font-medium text-lg">{loading ? "..." : (healthInfo?.provider || "N/A")}</p>
               </div>
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">Model</span>
-                <p className="text-lg font-semibold">{model}</p>
-              </div>
-              <div className="space-y-1">
-                <span className="text-sm font-medium text-muted-foreground">Status</span>
-                <p className="text-lg font-semibold">
-                  <Badge variant={status === "Online" ? "default" : "destructive"} className="mt-1">
-                    {status}
-                  </Badge>
-                </p>
+              <div className="bg-muted/30 p-4 rounded-lg border">
+                <p className="text-xs text-muted-foreground mb-1 uppercase font-semibold">Model</p>
+                <p className="font-medium text-lg">{loading ? "..." : (healthInfo?.model || "N/A")}</p>
               </div>
             </div>
           </CardContent>
@@ -73,12 +78,12 @@ export default function SystemConfigurationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Search className="w-5 h-5 text-primary" /> Retrieval Pipeline
+              <Search className="w-5 h-5 text-blue-500" /> Retrieval Pipeline
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              Every question is answered using your uploaded knowledge base. Relevant document chunks are retrieved before answer generation to ensure grounded responses.
+            <p className="text-muted-foreground leading-relaxed">
+              Every question is answered using your uploaded documents. Relevant document chunks are retrieved before answer generation to ensure grounded responses.
             </p>
           </CardContent>
         </Card>
@@ -87,11 +92,11 @@ export default function SystemConfigurationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" /> Self-Healing Workflow
+              <RefreshCw className="w-5 h-5 text-purple-500" /> Self-Healing Workflow
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground leading-relaxed">
               If the system detects that an answer is incomplete, unsupported, or lacks sufficient context, it automatically performs another retrieval cycle before generating the final response.
             </p>
           </CardContent>
@@ -101,21 +106,21 @@ export default function SystemConfigurationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-primary" /> Explainability
+              <Eye className="w-5 h-5 text-emerald-500" /> Explainability
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <h4 className="font-semibold text-sm mb-1">Source Attribution</h4>
-              <p className="text-sm text-muted-foreground">Generated facts are traced back to exact chunks in your uploaded documents.</p>
+              <p className="font-medium mb-1">Source Attribution</p>
+              <p className="text-sm text-muted-foreground">Every claim is linked directly to the original document chunk it was extracted from.</p>
             </div>
             <div>
-              <h4 className="font-semibold text-sm mb-1">Confidence Evaluation</h4>
-              <p className="text-sm text-muted-foreground">Answers are scored before reaching you to ensure accuracy and relevance.</p>
+              <p className="font-medium mb-1">Confidence Evaluation</p>
+              <p className="text-sm text-muted-foreground">Responses are actively scored based on their accuracy against the retrieved context.</p>
             </div>
             <div>
-              <h4 className="font-semibold text-sm mb-1">Grounded Responses</h4>
-              <p className="text-sm text-muted-foreground">The system rejects unverified claims that are not present in your knowledge base.</p>
+              <p className="font-medium mb-1">Grounded Responses</p>
+              <p className="text-sm text-muted-foreground">The system prevents hallucination by strictly refusing to answer questions outside the scope of your uploaded documents.</p>
             </div>
           </CardContent>
         </Card>
@@ -124,19 +129,23 @@ export default function SystemConfigurationPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-primary" /> Supported Documents
+              <FileText className="w-5 h-5 text-orange-500" /> Supported Formats
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              The following formats are currently supported for knowledge base ingestion:
-            </p>
-            <div className="flex gap-2">
-              <Badge variant="outline" className="text-sm px-3 py-1 bg-muted/50">PDF</Badge>
-              <Badge variant="outline" className="text-sm px-3 py-1 bg-muted/50">TXT</Badge>
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2 bg-muted/50 px-4 py-2 rounded-lg border">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium">PDF</span>
+              </div>
+              <div className="flex items-center gap-2 bg-muted/50 px-4 py-2 rounded-lg border">
+                <FileText className="w-4 h-4 text-muted-foreground" />
+                <span className="font-medium">TXT</span>
+              </div>
             </div>
           </CardContent>
         </Card>
+
       </div>
     </div>
   )

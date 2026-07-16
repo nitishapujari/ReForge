@@ -70,7 +70,7 @@ export default function ChatPage() {
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: `✅ Document **${file.name}** uploaded successfully. It is now being processed and will be available in the Knowledge Base shortly.`
+            content: `✅ Document **${file.name}** uploaded successfully. It is now being processed and will be available in your documents shortly.`
           }
         ])
       } else {
@@ -245,7 +245,7 @@ export default function ChatPage() {
               </div>
               <div>
                 <p className="text-lg font-medium text-foreground">How can I help you today?</p>
-                <p className="text-sm">Ask a question and I'll search the knowledge base.</p>
+                <p className="text-sm">Ask a question and I'll search your documents.</p>
               </div>
             </div>
           ) : (

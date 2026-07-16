@@ -1,13 +1,21 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { useTheme } from "next-themes"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Monitor, Sun, Moon, Palette, Type } from "lucide-react"
+import { Monitor, Sun, Moon, Palette } from "lucide-react"
 
 export default function AppearancePage() {
+  const [mounted, setMounted] = useState(false)
   const { theme, setTheme } = useTheme()
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) return null
+
 
   return (
     <div className="flex-1 p-8 max-w-4xl mx-auto w-full">
@@ -57,6 +65,8 @@ export default function AppearancePage() {
             </div>
           </CardContent>
         </Card>
+
+
 
       </div>
     </div>

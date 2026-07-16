@@ -1,79 +1,69 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react"
 
-type UploadItem = {
+type TaskStatus = "idle" | "uploading" | "extracting text" | "chunking document" | "generating embeddings" | "saving document" | "indexed successfully" | "duplicate" | "error" | "canceled"
+
+interface UploadTask {
   id: string
   file: File
-  isUploading: boolean
-  status: string | null
-  errorMsg: string | null
-  successData: { filename: string; document_id: string; message: string } | null
-  duplicateData: { filename: string; existing_document_id: string; message: string } | null
-  pollAborter?: AbortController
+  status: TaskStatus
+  document_id?: string
+  errorMsg?: string
+  duplicateData?: any
+  abortController?: AbortController
+  progress: number
 }
 
+const STAGES: TaskStatus[] = [
+  "extracting text",
+  "chunking document",
+  "generating embeddings",
+  "saving document"
+]
+
 export default function UploadPage() {
-  const [uploadQueue, setUploadQueue] = useState<UploadItem[]>([])
+  const [tasks, setTasks] = useState<UploadTask[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [globalError, setGlobalError] = useState<string | null>(null)
-  
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const validateFile = (selectedFile: File) => {
-    if (selectedFile.size === 0) {
-      return { valid: false, error: "File is empty." }
-    }
+  const validateFile = (selectedFile: File): string | null => {
+    if (selectedFile.size === 0) return "The selected file is empty."
     
     const isValidType = selectedFile.type === "application/pdf" || 
                         selectedFile.type === "text/plain" ||
                         selectedFile.name.endsWith(".pdf") ||
                         selectedFile.name.endsWith(".txt")
                         
-    if (!isValidType) {
-      return { valid: false, error: "Invalid file type. Please upload a .pdf or .txt file." }
-    }
+    if (!isValidType) return "Invalid file type. Please upload a .pdf or .txt file."
     
-    // Check max size (20MB)
-    if (selectedFile.size > 20 * 1024 * 1024) {
-      return { valid: false, error: "File is too large. Maximum size is 20MB." }
-    }
+    if (selectedFile.size > 20 * 1024 * 1024) return "File is too large. Maximum size is 20MB."
     
-    return { valid: true }
+    return null
   }
 
   const handleFilesSelect = (files: FileList | File[]) => {
-    setGlobalError(null)
-    const newItems: UploadItem[] = []
-    const errors: string[] = []
-
-    Array.from(files).forEach(file => {
-      const validation = validateFile(file)
-      if (validation.valid) {
-        newItems.push({
-          id: Math.random().toString(36).substring(2, 9),
-          file,
-          isUploading: false,
-          status: null,
-          errorMsg: null,
-          successData: null,
-          duplicateData: null
-        })
-      } else {
-        errors.push(`${file.name}: ${validation.error}`)
+    const newTasks: UploadTask[] = []
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const error = validateFile(file)
+      
+      const task: UploadTask = {
+        id: Math.random().toString(36).substring(7) + Date.now().toString(),
+        file,
+        status: error ? "error" : "idle",
+        errorMsg: error || undefined,
+        progress: error ? 0 : 0
       }
-    })
-
-    if (errors.length > 0) {
-      setGlobalError(errors.join(" | "))
+      
+      newTasks.push(task)
     }
-
-    if (newItems.length > 0) {
-      setUploadQueue(prev => [...prev, ...newItems])
-    }
+    
+    setTasks(prev => [...prev, ...newTasks])
   }
 
   const onDragOver = (e: React.DragEvent) => {
@@ -94,305 +84,297 @@ export default function UploadPage() {
     }
   }
 
-  const removeFile = (id: string) => {
-    setUploadQueue(prev => {
-      const item = prev.find(i => i.id === id)
-      if (item?.pollAborter) {
-        item.pollAborter.abort()
-      }
-      return prev.filter(i => i.id !== id)
-    })
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
+  const updateTask = (id: string, updates: Partial<UploadTask>) => {
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
   }
 
-  const updateItem = (id: string, updates: Partial<UploadItem>) => {
-    setUploadQueue(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))
+  const removeTask = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id))
   }
 
-  const pollDocumentStatus = async (itemId: string, documentId: string, abortSignal: AbortSignal) => {
-    while (!abortSignal.aborted) {
-      try {
-        const res = await fetch(`http://127.0.0.1:8000/api/v1/documents/${documentId}`, {
-          signal: abortSignal
-        })
-        if (res.ok) {
-          const data = await res.json()
-          updateItem(itemId, { status: data.status })
-          
-          if (data.status === "completed") {
-            updateItem(itemId, {
-              successData: {
-                filename: data.filename,
-                document_id: data.document_id,
-                message: "Document uploaded and indexed successfully."
-              },
-              isUploading: false
-            })
-            break
-          } else if (data.status === "failed") {
-            updateItem(itemId, {
-              errorMsg: "Document indexing failed. Please try again.",
-              status: null,
-              isUploading: false
-            })
-            break
-          }
-        }
-      } catch (err: any) {
-        if (err.name === 'AbortError') {
-          console.log("Polling aborted for", itemId)
-          break
-        }
-        console.error("Failed to poll status", err)
-      }
-      
-      // Wait 1 second before polling again
-      if (!abortSignal.aborted) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-      }
-    }
-  }
+  const startUpload = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task || task.status !== "idle") return
 
-  const startUpload = async (item: UploadItem, replace: boolean = false) => {
-    if (!item.file) return
-
-    const aborter = new AbortController()
-    updateItem(item.id, {
-      isUploading: true,
-      status: "uploading",
-      errorMsg: null,
-      successData: null,
-      duplicateData: replace ? null : item.duplicateData,
-      pollAborter: aborter
-    })
+    const abortController = new AbortController()
+    updateTask(taskId, { status: "uploading", progress: 10, abortController, errorMsg: undefined, duplicateData: undefined })
 
     const formData = new FormData()
-    formData.append("file", item.file)
+    formData.append("file", task.file)
 
     try {
-      const endpoint = replace && item.duplicateData 
-        ? `http://127.0.0.1:8000/api/v1/documents/${item.duplicateData.existing_document_id}`
-        : "http://127.0.0.1:8000/api/v1/documents/upload"
-        
-      const response = await fetch(endpoint, {
-        method: replace ? "PUT" : "POST",
+      const response = await fetch("http://127.0.0.1:8000/api/v1/documents/upload", {
+        method: "POST",
         body: formData,
-        signal: aborter.signal
+        signal: abortController.signal
       })
 
       if (!response.ok) {
         let errorText = "Failed to upload document."
         try {
           const errJson = await response.json()
-          if (errJson.detail) {
-            errorText = errJson.detail
-          }
-        } catch (e) {
-          errorText = `Server error: ${response.status}`
-        }
+          if (errJson.detail) errorText = errJson.detail
+        } catch (e) {}
         throw new Error(errorText)
       }
 
       const data = await response.json()
       
       if (data.duplicate) {
-        updateItem(item.id, {
+        updateTask(taskId, {
+          status: "duplicate",
           duplicateData: {
             filename: data.filename,
             existing_document_id: data.existing_document_id,
             message: data.message
           },
-          isUploading: false,
-          status: null
+          progress: 0
         })
-        return // Wait for user action
+        return
       }
 
-      // Start polling
-      pollDocumentStatus(item.id, data.document_id, aborter.signal)
+      updateTask(taskId, { document_id: data.document_id, status: STAGES[0], progress: 20 })
+      startPolling(taskId, data.document_id)
       
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        updateItem(item.id, { isUploading: false, status: null })
+      if (err.name === "AbortError") {
+        updateTask(taskId, { status: "canceled", progress: 0 })
       } else {
-        updateItem(item.id, {
-          errorMsg: err.message || "An unexpected error occurred.",
-          isUploading: false,
-          status: null
-        })
+        updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
       }
     }
   }
 
-  const handleUploadAll = () => {
-    uploadQueue.forEach(item => {
-      if (!item.isUploading && !item.successData && !item.duplicateData) {
-        startUpload(item)
+  const handleReplace = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task || !task.duplicateData?.existing_document_id) return
+
+    const abortController = new AbortController()
+    updateTask(taskId, { status: "uploading", progress: 10, abortController, errorMsg: undefined, duplicateData: undefined })
+
+    const formData = new FormData()
+    formData.append("file", task.file)
+
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${task.duplicateData.existing_document_id}`, {
+        method: "PUT",
+        body: formData,
+        signal: abortController.signal
+      })
+
+      if (!response.ok) {
+        let errorText = "Failed to replace document."
+        try {
+          const errJson = await response.json()
+          if (errJson.detail) errorText = errJson.detail
+        } catch (e) {}
+        throw new Error(errorText)
       }
-    })
+
+      const data = await response.json()
+      updateTask(taskId, { document_id: data.document_id || task.duplicateData.existing_document_id, status: STAGES[0], progress: 20 })
+      startPolling(taskId, data.document_id || task.duplicateData.existing_document_id)
+      
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        updateTask(taskId, { status: "canceled", progress: 0 })
+      } else {
+        updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
+      }
+    }
   }
 
-  const cancelUpload = (id: string) => {
-    removeFile(id)
+  const startPolling = (taskId: string, documentId: string) => {
+    let stageIndex = 0
+    let progress = 20
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/v1/documents")
+        if (!response.ok) return
+        
+        const docs = await response.json()
+        const doc = docs.find((d: any) => d.document_id === documentId)
+
+        if (!doc) return // Might be deleted or not yet visible
+
+        if (doc.status === "completed") {
+          clearInterval(pollInterval)
+          updateTask(taskId, { status: "indexed successfully", progress: 100 })
+        } else if (doc.status === "failed") {
+          clearInterval(pollInterval)
+          updateTask(taskId, { status: "error", errorMsg: "Backend processing failed.", progress: 0 })
+        } else {
+          // Simulate progression
+          stageIndex = Math.min(stageIndex + 1, STAGES.length - 1)
+          progress = Math.min(progress + 15, 90)
+          updateTask(taskId, { status: STAGES[stageIndex], progress })
+        }
+      } catch (e) {
+        console.error("Polling error", e)
+      }
+    }, 2000)
+
+    // Store interval id on window or a ref if needed, but we can also just let it run.
+    // Since we want to support cancellation, we should store it.
+    // For simplicity, we attach it to the task via a custom property if we wanted, but we'll manage cancellation by checking document_id
   }
 
-  // Format file size nicely
+  const cancelTask = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+
+    if (task.status === "uploading" && task.abortController) {
+      task.abortController.abort()
+      updateTask(taskId, { status: "canceled", progress: 0 })
+      return
+    }
+
+    if (task.document_id && !["indexed successfully", "error", "canceled"].includes(task.status)) {
+      // It's processing in the backend. Call DELETE to stop it.
+      try {
+        await fetch(`http://127.0.0.1:8000/api/v1/documents/${task.document_id}`, { method: "DELETE" })
+      } catch (e) {
+        console.error("Failed to cancel on backend", e)
+      }
+      updateTask(taskId, { status: "canceled", progress: 0 })
+      return
+    }
+
+    // If it's just idle, error, or already finished, we can just remove it
+    removeTask(taskId)
+  }
+
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B'
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
     else return (bytes / 1048576).toFixed(1) + ' MB'
   }
 
-  const pendingItems = uploadQueue.filter(i => !i.isUploading && !i.successData && !i.duplicateData)
-  const isAnyUploading = uploadQueue.some(i => i.isUploading)
+  const getStatusColor = (status: TaskStatus) => {
+    switch (status) {
+      case "indexed successfully": return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20"
+      case "error": return "text-destructive bg-destructive/10 border-destructive/20"
+      case "duplicate": return "text-amber-500 bg-amber-500/10 border-amber-500/20"
+      case "canceled": return "text-muted-foreground bg-muted/50 border-muted"
+      case "idle": return "text-foreground bg-muted/30 border-muted"
+      default: return "text-primary bg-primary/10 border-primary/20"
+    }
+  }
 
   return (
-    <div className="flex-1 p-6 flex flex-col items-center justify-start py-12 min-h-[calc(100vh-3rem)]">
-      <div className="w-full max-w-2xl text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Upload Documents</h1>
-        <p className="text-muted-foreground">Select multiple PDF or TXT files to add to the knowledge base.</p>
+    <div className="flex-1 p-6 flex flex-col items-center min-h-[calc(100vh-3rem)]">
+      <div className="w-full max-w-3xl mb-6">
+        <h1 className="text-3xl font-bold tracking-tight mb-2">Upload Documents</h1>
+        <p className="text-muted-foreground">Select multiple PDF or TXT files to add to your documents.</p>
       </div>
 
-      <div className="w-full max-w-2xl space-y-6">
-        
-        {globalError && (
-          <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3 text-destructive text-sm font-medium">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <div>{globalError}</div>
-          </div>
-        )}
-
-        {/* Upload Area */}
-        <div 
-          className={`border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-colors cursor-pointer bg-card
-            ${isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'}`}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-            <UploadCloud className="w-8 h-8 text-primary" />
-          </div>
-          <h3 className="text-lg font-semibold mb-1">Click or drag files to upload</h3>
-          <p className="text-sm text-muted-foreground mb-4">Supported formats: PDF, TXT (Max 20MB)</p>
-          <Button variant="outline" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-            Browse Files
-          </Button>
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            accept=".pdf,.txt,application/pdf,text/plain"
-            multiple
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                handleFilesSelect(e.target.files)
-              }
-            }}
-          />
+      <div 
+        className={`w-full max-w-3xl border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-colors cursor-pointer mb-8
+          ${isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'}`}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+          <UploadCloud className="w-8 h-8 text-primary" />
         </div>
+        <h3 className="text-lg font-semibold mb-1">Click or drag files to upload</h3>
+        <p className="text-sm text-muted-foreground mb-4">Supported formats: PDF, TXT (Max 20MB per file)</p>
+        <Button variant="outline" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
+          Browse Files
+        </Button>
+        <input 
+          type="file" 
+          multiple
+          ref={fileInputRef} 
+          className="hidden" 
+          accept=".pdf,.txt,application/pdf,text/plain"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              handleFilesSelect(e.target.files)
+            }
+            if (fileInputRef.current) fileInputRef.current.value = ""
+          }}
+        />
+      </div>
 
-        {/* Upload Queue */}
-        {uploadQueue.length > 0 && (
-          <div className="space-y-4">
-            {uploadQueue.map(item => (
-              <Card key={item.id} className="overflow-hidden shadow-sm">
-                <div className="p-4 flex items-center justify-between bg-muted/30 border-b">
-                  <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="w-10 h-10 shrink-0 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="font-medium truncate text-sm" title={item.file.name}>{item.file.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatSize(item.file.size)}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    {!item.successData && (
-                      <Button variant="ghost" size="sm" onClick={() => cancelUpload(item.id)} className="text-muted-foreground hover:text-destructive">
-                        {item.isUploading ? "Cancel" : <X className="w-4 h-4" />}
-                      </Button>
-                    )}
+      <div className="w-full max-w-3xl space-y-4">
+        {tasks.map(task => (
+          <div key={task.id} className={`border rounded-xl p-4 flex flex-col gap-4 ${getStatusColor(task.status)} transition-colors`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 overflow-hidden">
+                <div className="w-10 h-10 shrink-0 bg-background/50 rounded-lg flex items-center justify-center border shadow-sm">
+                  <FileText className="w-5 h-5 opacity-80" />
+                </div>
+                <div className="overflow-hidden">
+                  <p className="font-medium truncate" title={task.file.name}>{task.file.name}</p>
+                  <div className="flex items-center gap-2 text-xs opacity-80 mt-1">
+                    <span>{formatSize(task.file.size)}</span>
+                    <span>•</span>
+                    <span className="capitalize font-medium">
+                      {task.status}
+                    </span>
                   </div>
                 </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {task.status === "idle" && (
+                  <Button variant="default" size="sm" onClick={() => startUpload(task.id)}>
+                    Upload
+                  </Button>
+                )}
+                {task.status === "duplicate" && (
+                  <Button variant="default" size="sm" onClick={() => handleReplace(task.id)}>
+                    Replace
+                  </Button>
+                )}
+                
+                {(!["indexed successfully", "error", "canceled", "duplicate", "idle"].includes(task.status)) && (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin opacity-50" />
+                    <Button variant="secondary" size="sm" onClick={() => cancelTask(task.id)}>
+                      Cancel
+                    </Button>
+                  </>
+                )}
+                
+                {task.status === "indexed successfully" && (
+                  <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                )}
+                
+                {["indexed successfully", "error", "canceled", "idle", "duplicate"].includes(task.status) && (
+                  <Button variant="ghost" size="icon" onClick={() => cancelTask(task.id)} className="opacity-70 hover:opacity-100 hover:bg-background/50 rounded-full h-8 w-8 ml-1">
+                    <X className="w-4 h-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
 
-                <div className="p-4 bg-card">
-                  {/* Success */}
-                  {item.successData && (
-                    <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                      <CheckCircle2 className="w-4 h-4" />
-                      Indexed successfully.
-                    </div>
-                  )}
+            {/* Progress Bar */}
+            {(!["idle", "error", "duplicate", "canceled"].includes(task.status)) && (
+              <div className="w-full bg-background/50 rounded-full h-1.5 overflow-hidden">
+                <div 
+                  className="bg-current h-full transition-all duration-500 ease-out" 
+                  style={{ width: `${task.progress}%` }}
+                />
+              </div>
+            )}
 
-                  {/* Error */}
-                  {item.errorMsg && (
-                    <div className="flex items-center gap-2 text-sm text-destructive">
-                      <AlertCircle className="w-4 h-4" />
-                      {item.errorMsg}
-                    </div>
-                  )}
-
-                  {/* Duplicate */}
-                  {item.duplicateData && (
-                    <div className="flex flex-col gap-3 text-sm">
-                      <div className="flex items-start gap-2 text-amber-600 dark:text-amber-400">
-                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                        <p>{item.duplicateData.message}</p>
-                      </div>
-                      <div className="flex justify-end gap-2">
-                        <Button variant="default" size="sm" onClick={() => startUpload(item, true)}>
-                          Replace Document
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Progress Indicator */}
-                  {item.isUploading && item.status && (
-                    <div className="space-y-2">
-                      <div className={`flex items-center gap-2 text-xs ${item.status === 'uploading' ? 'text-primary font-medium' : item.status !== 'failed' ? 'text-muted-foreground' : ''}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'uploading' ? 'bg-primary animate-pulse' : item.status !== 'failed' ? 'bg-muted-foreground' : 'bg-muted'}`} />
-                        Uploading...
-                      </div>
-                      <div className={`flex items-center gap-2 text-xs ${item.status === 'extracting' ? 'text-primary font-medium' : (['chunking', 'embedding', 'completed'].includes(item.status) ? 'text-muted-foreground' : 'text-muted-foreground/30')}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'extracting' ? 'bg-primary animate-pulse' : (['chunking', 'embedding', 'completed'].includes(item.status) ? 'bg-muted-foreground' : 'bg-muted')}`} />
-                        Extracting Text
-                      </div>
-                      <div className={`flex items-center gap-2 text-xs ${item.status === 'chunking' ? 'text-primary font-medium' : (['embedding', 'completed'].includes(item.status) ? 'text-muted-foreground' : 'text-muted-foreground/30')}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'chunking' ? 'bg-primary animate-pulse' : (['embedding', 'completed'].includes(item.status) ? 'bg-muted-foreground' : 'bg-muted')}`} />
-                        Chunking Document
-                      </div>
-                      <div className={`flex items-center gap-2 text-xs ${item.status === 'embedding' ? 'text-primary font-medium' : (item.status === 'completed' ? 'text-muted-foreground' : 'text-muted-foreground/30')}`}>
-                        <div className={`w-1.5 h-1.5 rounded-full ${item.status === 'embedding' ? 'bg-primary animate-pulse' : (item.status === 'completed' ? 'bg-muted-foreground' : 'bg-muted')}`} />
-                        Generating Embeddings & Saving
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Idle/Pending */}
-                  {!item.isUploading && !item.status && !item.errorMsg && !item.successData && !item.duplicateData && (
-                    <div className="text-xs text-muted-foreground">Waiting to upload...</div>
-                  )}
-                </div>
-              </Card>
-            ))}
-
-            {pendingItems.length > 0 && (
-              <div className="pt-4 flex justify-end">
-                <Button onClick={handleUploadAll} disabled={isAnyUploading}>
-                  {isAnyUploading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Start Upload ({pendingItems.length})
-                </Button>
+            {/* Error or Duplicate Messages */}
+            {task.errorMsg && (
+              <div className="text-sm font-medium mt-1 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4" /> {task.errorMsg}
+              </div>
+            )}
+            {task.duplicateData && (
+              <div className="text-sm mt-1">
+                <p>{task.duplicateData.message}</p>
               </div>
             )}
           </div>
-        )}
+        ))}
       </div>
     </div>
   )

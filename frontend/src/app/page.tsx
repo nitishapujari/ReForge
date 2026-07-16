@@ -18,23 +18,20 @@ import { useUser } from "@/contexts/user-context"
 import { Badge } from "@/components/ui/badge"
 
 export default function HomePage() {
-  const [provider, setProvider] = useState<string>("Loading...")
-  const [model, setModel] = useState<string>("")
+  const [providerInfo, setProviderInfo] = useState<{provider: string, model: string}>({ provider: "Loading...", model: "" })
 
   useEffect(() => {
     fetch("/api/v1/health")
       .then(res => res.json())
       .then(data => {
         if (data.active_provider) {
-          // Capitalize first letter
           const name = data.active_provider.charAt(0).toUpperCase() + data.active_provider.slice(1)
-          setProvider(name)
-          setModel(data.active_model || "")
+          setProviderInfo({ provider: name, model: data.llm || "" })
         } else {
-          setProvider("Unknown Provider")
+          setProviderInfo({ provider: "Unknown Provider", model: "" })
         }
       })
-      .catch(() => setProvider("LLM"))
+      .catch(() => setProviderInfo({ provider: "LLM", model: "" }))
   }, [])
 
   return (
@@ -46,14 +43,14 @@ export default function HomePage() {
       </div>
 
       <div className="container relative z-10 mx-auto px-4 py-16 flex flex-col items-center text-center w-full">
-        <HeroSection provider={provider} model={model} />
+        <HeroSection providerInfo={providerInfo} />
         <PersonalizedDashboard />
       </div>
     </div>
   )
 }
 
-function HeroSection({ provider, model }: { provider: string, model: string }) {
+function HeroSection({ providerInfo }: { providerInfo: { provider: string, model: string } }) {
   return (
     <>
       <div className="mb-8 flex items-center justify-center w-48 h-auto md:w-64">
@@ -62,14 +59,14 @@ function HeroSection({ provider, model }: { provider: string, model: string }) {
 
       <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80 mb-6">
         <Sparkles className="mr-2 h-3 w-3" />
-        Powered by {provider}{model ? ` • ${model}` : ""}
+        Powered by {providerInfo.provider} {providerInfo.model ? `• ${providerInfo.model}` : ""}
       </div>
       
-      <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60 mb-10 max-w-4xl">
+      <h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60 mb-6 max-w-4xl">
         The Self-Healing <br className="hidden sm:inline" /> RAG Pipeline
       </h1>
       
-      <div className="flex flex-col sm:flex-row gap-4 mb-20">
+      <div className="flex flex-col sm:flex-row gap-4 mb-20 mt-10">
         <Link href="/chat" className={cn(buttonVariants({ size: "lg" }), "group rounded-full px-8")}>
           Start Chatting
           <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -81,8 +78,6 @@ function HeroSection({ provider, model }: { provider: string, model: string }) {
     </>
   )
 }
-
-
 
 function PersonalizedDashboard() {
   const { user } = useUser()
@@ -128,20 +123,20 @@ function PersonalizedDashboard() {
 
   return (
     <div className="w-full max-w-5xl mt-24 space-y-16 text-left">
-      {/* ReForge Performance */}
+      {/* Your Activity */}
       <section>
-        <h2 className="text-2xl font-bold tracking-tight mb-6">ReForge Performance</h2>
+        <h2 className="text-2xl font-bold tracking-tight mb-6">Your Activity</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Card className="bg-card/50">
             <CardHeader className="pb-2">
-              <CardDescription>Documents Indexed</CardDescription>
-              <CardTitle className="text-3xl font-bold">{loading ? "..." : docs.length}</CardTitle>
+              <CardDescription>Total Documents</CardDescription>
+              <CardTitle className="text-4xl font-bold">{loading ? "..." : docs.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card className="bg-card/50">
             <CardHeader className="pb-2">
-              <CardDescription>Knowledge Base Size</CardDescription>
-              <CardTitle className="text-3xl font-bold">{loading ? "..." : `${totalChunks.toLocaleString()} Indexed Chunks`}</CardTitle>
+              <CardDescription>Total Conversations</CardDescription>
+              <CardTitle className="text-4xl font-bold">{loading ? "..." : sessions.length}</CardTitle>
             </CardHeader>
           </Card>
         </div>
@@ -221,8 +216,8 @@ function PersonalizedDashboard() {
               {loading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
               ) : lastSession ? (
-                <div className="space-y-4 flex flex-col items-start w-full">
-                  <p className="text-sm font-medium text-foreground truncate w-full" title={lastSession.title || "Untitled Session"}>
+                <div className="space-y-4 flex flex-col items-start">
+                  <p className="text-sm font-medium text-foreground line-clamp-2">
                     {lastSession.title || "Untitled Session"}
                   </p>
                   <p className="text-xs text-muted-foreground">

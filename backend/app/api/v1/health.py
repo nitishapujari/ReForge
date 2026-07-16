@@ -35,6 +35,7 @@ router = APIRouter(tags=["Health"])
                     "example": {
                         "status": "healthy",
                         "active_provider": "gemini",
+                        "llm": "gemini-2.5-flash",
                         "llm_status": "connected",
                         "chromadb": "connected",
                         "database": "connected",
@@ -89,7 +90,7 @@ async def health_check(
     return HealthResponse(
         status=overall,
         active_provider=active_provider,
-        active_model=active_model,
+        llm=active_model,
         llm_status=llm_status,
         chromadb=chromadb_status,
         database=database_status,
