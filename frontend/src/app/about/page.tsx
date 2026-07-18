@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect } from "react"
-import { motion, useMotionTemplate, useMotionValue } from "framer-motion"
+import { motion, useMotionTemplate, useMotionValue, Variants } from "framer-motion"
 import { Database, Sparkles, LayoutTemplate, ArrowDown, UploadCloud, Search, BrainCircuit, RefreshCw, Layers } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -39,7 +39,7 @@ function SpotlightCard({ children, className }: { children: React.ReactNode, cla
   )
 }
 
-const containerVariants = {
+const containerVariants: Variants = {
   hidden: { opacity: 0 },
   show: {
     opacity: 1,
@@ -47,7 +47,7 @@ const containerVariants = {
   }
 }
 
-const itemVariants = {
+const itemVariants: Variants = {
   hidden: { opacity: 0, y: 20 },
   show: { 
     opacity: 1, 

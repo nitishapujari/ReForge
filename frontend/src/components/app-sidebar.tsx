@@ -50,7 +50,7 @@ const navItems = [
     icon: Upload,
   },
   {
-    title: "Execution Trace",
+    title: "Verification Log",
     url: "/trace",
     icon: Activity,
   }

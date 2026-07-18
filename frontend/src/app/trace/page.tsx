@@ -1,5 +1,7 @@
 "use client"
 
+import Link from "next/link"
+
 import { useState, useEffect, useMemo } from "react"
 import { 
   Accordion, AccordionContent, AccordionItem, AccordionTrigger 
@@ -10,9 +12,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { 
   Activity, Clock, ChevronDown, ChevronRight, CheckCircle2, 
-  XCircle, RotateCcw, HelpCircle, Search, Bot, Scale, GitBranch, Edit3, MessageSquare
+  XCircle, RotateCcw, HelpCircle, Search, Bot, Scale, GitBranch, Edit3, MessageSquare,
+  FileText, Zap, BarChart3, Database
 } from "lucide-react"
 
 // Types
@@ -88,6 +92,34 @@ const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus:
 
   const parsedOutput = tryParseJSON(entry.output_summary)
 
+  const getHumanReadableTitle = () => {
+    switch(entry.node) {
+      case 'retrieve': return "Searching Context"
+      case 'generate': return "Drafting Response"
+      case 'critique': return "Verifying Accuracy"
+      case 'rewrite': return "Rewriting Search Query"
+      case 'router': return "Initial Routing"
+      case 'decision': return "Routing Decision"
+      default: return entry.node
+    }
+  }
+
+  const getHumanReadableDescription = () => {
+    if (entry.node === 'critique' && entry.decision === 'rewrite') return "The AI Critic rejected the draft for lacking grounded context. Triggering a retry."
+    if (entry.node === 'critique' && entry.decision === 'accept') return "The AI Critic verified that the draft is grounded."
+    if (entry.node === 'router' && entry.decision === 'bypass') return "General conversation detected. Bypassing document retrieval."
+    if (entry.node === 'router' && entry.decision === 'retrieve') return "Question requires external knowledge. Routing to RAG pipeline."
+    if (entry.node === 'decision') return "Determining next steps based on critic feedback."
+    if (entry.node === 'retrieve') {
+      const queryMatch = entry.input_summary.match(/query='(.*?)'/)
+      if (queryMatch) return `Searched documents for: "${queryMatch[1]}"`
+      return "Retrieving relevant information from documents."
+    }
+    if (entry.node === 'rewrite') return "Reformulating the search query to find better information."
+    if (entry.node === 'generate') return "The AI formulated a draft response."
+    return "Processing step."
+  }
+
   return (
     <div className="relative pl-6 pb-6">
       {/* Timeline line */}
@@ -103,14 +135,15 @@ const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus:
         onClick={() => setIsExpanded(!isExpanded)}
       >
         {/* Collapsed Summary */}
-        <div className="p-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="p-1.5 rounded-md bg-muted">
+        <div className="p-3 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-1.5 rounded-md bg-muted mt-0.5">
               {getIcon()}
             </div>
             <div>
-              <p className="font-semibold text-sm capitalize">{entry.node}</p>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <p className="font-semibold text-sm">{getHumanReadableTitle()}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{getHumanReadableDescription()}</p>
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 mt-1.5 font-medium">
                 <span className="flex items-center"><Clock className="w-3 h-3 mr-1"/> {entry.execution_time_ms.toFixed(0)} ms</span>
                 <span>•</span>
                 <span>Attempt {entry.attempt}</span>
@@ -123,46 +156,117 @@ const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus:
           </div>
         </div>
 
-        {/* Expanded Details */}
+        {/* Expanded Details - User Friendly View */}
         {isExpanded && (
-          <div className="p-4 border-t bg-muted/20 text-sm space-y-3 cursor-text" onClick={(e) => e.stopPropagation()}>
-            <div>
-              <p className="font-semibold mb-1 text-xs text-muted-foreground uppercase tracking-wider">Input Summary</p>
-              <p className="whitespace-pre-wrap">{entry.input_summary}</p>
-            </div>
+          <div className="p-5 border-t bg-card text-sm space-y-4" onClick={(e) => e.stopPropagation()}>
             
-            <div>
-              <p className="font-semibold mb-1 text-xs text-muted-foreground uppercase tracking-wider">Output Summary</p>
-              {parsedOutput ? (
-                <div className="space-y-2">
-                  {parsedOutput.confidence !== undefined && (
-                    <p><span className="font-medium">Confidence:</span> {parsedOutput.confidence}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              {/* Parse and display friendly metrics based on node type */}
+              {entry.node === 'retrieve' && (
+                <>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Search className="w-3 h-3"/> Search Query</p>
+                    <p className="font-medium text-foreground text-sm">{entry.input_summary.match(/query='(.*?)'/)?.[1] || "N/A"}</p>
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Database className="w-3 h-3"/> Context Snippets Retrieved</p>
+                    <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/found (\d+) docs/)?.[1] || "0"}</p>
+                  </div>
+                  {entry.output_summary.match(/best_score=([0-9.]+)/) && (
+                    <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><BarChart3 className="w-3 h-3"/> Top Relevance Score</p>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-full max-w-xs bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-primary" style={{ width: `${parseFloat(entry.output_summary.match(/best_score=([0-9.]+)/)?.[1] || "0") * 100}%` }}></div>
+                        </div>
+                        <span className="text-xs font-semibold">{parseFloat(entry.output_summary.match(/best_score=([0-9.]+)/)?.[1] || "0").toFixed(2)}</span>
+                      </div>
+                    </div>
                   )}
+                </>
+              )}
+
+              {entry.node === 'generate' && (
+                <>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><FileText className="w-3 h-3"/> Context Documents Used</p>
+                    <p className="font-medium text-foreground text-sm">{entry.input_summary.match(/context_docs=(\d+)/)?.[1] || "0"}</p>
+                  </div>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Edit3 className="w-3 h-3"/> Draft Length</p>
+                    <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/answer_len=(\d+)/)?.[1] || "0"} characters</p>
+                  </div>
+                  {entry.output_summary.match(/sources=(\d+)/) && (
+                    <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3"/> Sources Cited</p>
+                      <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/sources=(\d+)/)?.[1]}</p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {entry.node === 'critique' && parsedOutput && (
+                <div className="bg-muted/30 p-4 rounded-lg border border-border/50 md:col-span-2 space-y-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Scale className="w-3 h-3"/> Evaluation Results</p>
+                  
                   {parsedOutput.grounded !== undefined && (
-                    <p><span className="font-medium">Grounded:</span> {parsedOutput.grounded ? 'Yes' : 'No'}</p>
+                    <div className="flex items-center justify-between p-2.5 bg-background rounded border shadow-sm">
+                      <span className="text-sm font-medium">Factually Grounded</span>
+                      {parsedOutput.grounded ? 
+                        <span className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> PASS</span> : 
+                        <span className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1"><XCircle className="w-3 h-3"/> FAIL</span>
+                      }
+                    </div>
                   )}
+                  
+                  {parsedOutput.confidence && (
+                    <div className="flex items-center justify-between p-2.5 bg-background rounded border shadow-sm">
+                      <span className="text-sm font-medium">AI Confidence</span>
+                      <span className="text-sm font-bold text-primary">{parsedOutput.confidence}</span>
+                    </div>
+                  )}
+
                   {parsedOutput.missing_information && (
-                    <p><span className="font-medium">Missing Info:</span> {parsedOutput.missing_information}</p>
-                  )}
-                  {parsedOutput.reason && (
-                    <p><span className="font-medium">Reason:</span> {parsedOutput.reason}</p>
-                  )}
-                  {/* Fallback for other keys */}
-                  {!parsedOutput.confidence && !parsedOutput.grounded && (
-                     <p className="font-mono text-xs p-2 bg-muted rounded">{JSON.stringify(parsedOutput, null, 2)}</p>
+                    <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-md">
+                      <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1">Missing Information Detected</p>
+                      <p className="text-xs text-foreground/80 leading-relaxed">{parsedOutput.missing_information}</p>
+                    </div>
                   )}
                 </div>
-              ) : (
-                <p className="whitespace-pre-wrap">{entry.output_summary}</p>
+              )}
+
+              {/* General Fallback for other nodes or unparsed data */}
+              {entry.node !== 'retrieve' && entry.node !== 'generate' && (!parsedOutput || entry.node !== 'critique') && (
+                <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Zap className="w-3 h-3"/> Action Summary</p>
+                  <p className="text-sm text-foreground/90">{entry.output_summary.replace(/[{}"']+/g, ' ')}</p>
+                </div>
               )}
             </div>
 
-            {entry.decision && (
-              <div>
-                <p className="font-semibold mb-1 text-xs text-muted-foreground uppercase tracking-wider">Decision</p>
-                <p className="capitalize">{entry.decision}</p>
+            {/* View Raw Technical Data Toggle (Optional for power users) */}
+            <details className="mt-4 group/raw">
+              <summary className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer list-none flex items-center gap-1 hover:text-primary transition-colors w-max">
+                <ChevronRight className="w-3 h-3 group-open/raw:rotate-90 transition-transform"/> View Raw Technical Data
+              </summary>
+              <div className="mt-3 p-3 bg-black/40 rounded-lg border border-border/50 space-y-3 font-mono text-[10px] text-muted-foreground">
+                <div>
+                  <span className="text-primary/70 block mb-1">Input Context:</span>
+                  <div className="break-all whitespace-pre-wrap bg-black/40 p-2 rounded">{entry.input_summary}</div>
+                </div>
+                <div>
+                  <span className="text-primary/70 block mb-1">Output Payload:</span>
+                  <div className="break-all whitespace-pre-wrap bg-black/40 p-2 rounded">{entry.output_summary}</div>
+                </div>
+                {entry.decision && (
+                  <div>
+                    <span className="text-primary/70 block mb-1">Branch Decision:</span>
+                    <div className="bg-black/40 p-2 rounded">{entry.decision}</div>
+                  </div>
+                )}
               </div>
-            )}
+            </details>
           </div>
         )}
       </div>
@@ -276,12 +380,17 @@ export default function TracePage() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-sm">ID: {shortenId(s.id)}</span>
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                    <span className="font-medium text-sm truncate pr-2" title={s.title || "New Chat"}>
+                      {s.title || "New Chat"}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                       {s.message_count} msgs
                     </Badge>
                   </div>
-                  <span className="text-xs text-muted-foreground">{formatDate(s.created_at)}</span>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                    <span>ID: {shortenId(s.id)}</span>
+                    <span>{formatDate(s.created_at)}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -291,11 +400,21 @@ export default function TracePage() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        <div className="p-6 border-b shrink-0">
-          <h1 className="text-2xl font-bold tracking-tight mb-1">Execution Trace</h1>
-          <p className="text-muted-foreground text-sm">
-            Understand how ReForge arrived at each answer.
-          </p>
+        <div className="p-6 border-b shrink-0 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight mb-1">Verification Log</h1>
+            <p className="text-muted-foreground text-sm">
+              Understand how ReForge arrived at each answer.
+            </p>
+          </div>
+          {selectedSessionId && (
+            <Link href={`/chat?session=${selectedSessionId}`}>
+              <Button variant="outline" size="sm" className="shadow-sm">
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Open Chat
+              </Button>
+            </Link>
+          )}
         </div>
 
         <div className="flex-1 p-6">
@@ -309,7 +428,7 @@ export default function TracePage() {
           {!selectedSessionId ? (
             <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
               <Activity className="w-12 h-12 mb-4 opacity-20" />
-              <p>Select a chat session from the list to view its execution trace.</p>
+              <p>Select a chat session from the list to view its verification log.</p>
             </div>
           ) : loadingTrace ? (
             <div className="space-y-4 max-w-3xl">
@@ -323,7 +442,7 @@ export default function TracePage() {
           ) : traceData?.traces.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center text-muted-foreground border-2 border-dashed rounded-xl m-4">
               <MessageSquare className="w-10 h-10 mb-4 opacity-30" />
-              <p className="font-medium">No execution trace is available for this conversation.</p>
+              <p className="font-medium">No verification log is available for this conversation.</p>
               <p className="text-sm mt-1">This usually means the conversation was created before tracing was enabled.</p>
             </div>
           ) : (

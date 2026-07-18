@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check } from "lucide-react"
+import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { Button } from "@/components/ui/button"
@@ -102,6 +102,30 @@ export default function ChatPage() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const searchParams = new URLSearchParams(window.location.search)
+      const session = searchParams.get('session')
+      if (session) {
+        setSessionId(session)
+        fetch(`/api/v1/history/${session}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.messages) {
+              setMessages(data.messages.map((m: any) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                status: "done",
+                metadata: m.metadata || {}
+              })))
+            }
+          })
+          .catch(err => console.error("Failed to load session history:", err))
+      }
+    }
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -233,6 +257,7 @@ export default function ChatPage() {
                         ? {
                             ...msg,
                             status: "done",
+                            content: currentContent || data.final_answer || msg.content,
                             metadata: {
                               response_type: data.response_type,
                               verification_status: data.verification_status,
@@ -275,6 +300,14 @@ export default function ChatPage() {
       )
     } finally {
       setIsGenerating(false)
+      // Safety net: if the connection dropped cleanly but didn't finish, mark it as error
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId && msg.status === "generating"
+            ? { ...msg, status: "error", content: msg.content || "The connection to the server was lost." }
+            : msg
+        )
+      )
     }
   }
 
@@ -371,11 +404,66 @@ export default function ChatPage() {
                             {message.content}
                           </div>
                         ) : message.content ? (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {message.content}
-                          </ReactMarkdown>
+                          <>
+                            {/* Always show thought process accordion if trace_data is available */}
+                            {message.metadata?.trace_data && message.metadata.trace_data.length > 0 && (
+                              <details className="group/trace text-xs mb-4 border rounded-lg bg-card overflow-hidden">
+                                <summary className="cursor-pointer flex items-center justify-between p-2.5 bg-muted/50 hover:bg-muted/80 list-none">
+                                  <div className="flex items-center gap-2 font-medium text-muted-foreground">
+                                    <Bot className="w-3.5 h-3.5" /> AI Thought Process
+                                  </div>
+                                  <ChevronDown className="w-4 h-4 text-muted-foreground group-open/trace:rotate-180 transition-transform" />
+                                </summary>
+                                <div className="p-3 border-t space-y-3 bg-muted/10 font-mono text-[11px] text-muted-foreground">
+                                  {message.metadata.trace_data.map((trace: any, i: number) => {
+                                    let icon = <CheckCircle2 className="w-3 h-3 text-green-500" />
+                                    let text = `Completed step: ${trace.node}`
+                                    
+                                    if (trace.node === 'retrieve') {
+                                      icon = <Search className="w-3 h-3 text-blue-500" />
+                                      const queryMatch = trace.input_summary?.match(/query='(.*?)'/)
+                                      text = queryMatch ? `Searched documents for: "${queryMatch[1]}"` : "Retrieved information from documents."
+                                    } else if (trace.node === 'generate') {
+                                      icon = <Bot className="w-3 h-3 text-purple-500" />
+                                      text = `Drafted response (Attempt ${trace.attempt})`
+                                    } else if (trace.node === 'critique') {
+                                      icon = <Scale className="w-3 h-3 text-orange-500" />
+                                      text = trace.decision === 'rewrite' ? `Critic rejected draft for lacking grounding. Retrying...` : `Critic verified response is grounded.`
+                                    } else if (trace.node === 'rewrite') {
+                                      icon = <RefreshCw className="w-3 h-3 text-indigo-500" />
+                                      text = `Reformulated search query to try again.`
+                                    } else if (trace.node === 'router') {
+                                      icon = <GitBranch className="w-3 h-3 text-gray-500" />
+                                      text = trace.decision === 'bypass' ? "Decided to bypass RAG (general conversation)." : "Decided to route to RAG."
+                                    } else if (trace.node === 'decision') {
+                                      icon = <GitBranch className="w-3 h-3 text-gray-500" />
+                                      text = trace.decision === 'accept' ? "Accepted answer as grounded." : "Decided to retry formulation."
+                                    }
+
+                                    return (
+                                      <div key={i} className="flex gap-2.5 items-start">
+                                        <div className="shrink-0 mt-0.5">{icon}</div>
+                                        <div className="flex-1 leading-relaxed">
+                                          <span className={trace.decision === 'rewrite' ? "text-orange-500/90" : ""}>{text}</span>
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </details>
+                            )}
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                              {message.content}
+                            </ReactMarkdown>
+                          </>
                         ) : message.status === "generating" ? (
-                          <ThoughtProcess />
+                          <div className="text-xs mb-2 border rounded-lg bg-card overflow-hidden">
+                            <div className="flex items-center justify-between p-2.5 bg-muted/50">
+                              <div className="flex items-center gap-2 font-medium text-muted-foreground animate-pulse">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> <ThoughtProcess />
+                              </div>
+                            </div>
+                          </div>
                         ) : null}
                       </div>
                     ) : (
@@ -385,36 +473,7 @@ export default function ChatPage() {
                   
                   {message.role === "assistant" && message.metadata && message.status !== "error" && (
                     <div className="flex flex-wrap items-center gap-2 mt-1">
-                      {message.metadata.response_type === "GROUNDED" && message.metadata.attempts && message.metadata.attempts > 1 && (
-                        <div className="w-full">
-                          <details className="group/trace text-xs">
-                            <summary className="cursor-pointer flex items-center gap-1 w-max list-none">
-                              <Badge variant="outline" className="bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30 shadow-[0_0_8px_rgba(249,115,22,0.15)] select-none hover:bg-orange-500/20 transition-colors">
-                                <RefreshCw className="h-3 w-3 mr-1" />
-                                Self-Healed ({message.metadata.attempts} attempts) 
-                                <span className="ml-1.5 opacity-60 group-open/trace:rotate-180 transition-transform">▼</span>
-                              </Badge>
-                            </summary>
-                            <div className="mt-2 pl-3 border-l-2 border-orange-500/20 space-y-2.5 py-1 mb-2 bg-muted/30 rounded-r-lg p-2">
-                              {message.metadata.trace_data?.filter((t: any) => t.node === "critic").map((trace: any, i: number) => (
-                                <div key={i} className="text-muted-foreground flex gap-2">
-                                  <div className="shrink-0 text-orange-500/80 mt-0.5"><AlertTriangle className="h-3.5 w-3.5" /></div>
-                                  <div>
-                                    <div className="font-semibold text-orange-600/90 dark:text-orange-400/90 text-[10px] uppercase tracking-wider mb-0.5">Attempt {trace.attempt} Rejected</div>
-                                    <div className="text-[11px] leading-relaxed bg-background/50 p-1.5 rounded border border-border/50">{trace.output_summary}</div>
-                                  </div>
-                                </div>
-                              ))}
-                              <div className="text-muted-foreground flex gap-2">
-                                <div className="shrink-0 text-green-500/80 mt-0.5"><CheckCircle2 className="h-3.5 w-3.5" /></div>
-                                <div>
-                                  <div className="font-semibold text-green-600/90 dark:text-green-400/90 text-[10px] uppercase tracking-wider mt-0.5">Attempt {message.metadata.attempts} Grounded</div>
-                                </div>
-                              </div>
-                            </div>
-                          </details>
-                        </div>
-                      )}
+                      {/* Removed the old Self-Healed dropdown since we now have the global thought process */}
                       {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status === "UNAVAILABLE" ? (
                         <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
                           <AlertTriangle className="h-3 w-3 mr-1" />
@@ -430,6 +489,11 @@ export default function ChatPage() {
                         <Badge variant="outline" className="text-xs bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20">
                           <AlertTriangle className="h-3 w-3 mr-1" />
                           Ungrounded
+                        </Badge>
+                      ) : message.metadata.response_type === "GENERAL_KNOWLEDGE" ? (
+                        <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20">
+                          <Bot className="h-3 w-3 mr-1" />
+                          General Knowledge
                         </Badge>
                       ) : null}
                       {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status !== "UNAVAILABLE" && message.metadata.confidence !== undefined && (

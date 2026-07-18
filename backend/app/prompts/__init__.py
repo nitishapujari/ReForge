@@ -52,12 +52,33 @@ NO_DOCUMENTS_RESPONSE = (
 )
 
 NO_RELEVANT_DOCS_RESPONSE = (
-    "No results found in uploaded docs but here are a few things I know: "
+    "I couldn't find any information about this in your uploaded documents, but based on my general knowledge: "
 )
 
 NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE = (
-    "No results found in uploaded docs and I do not have confident general knowledge about this."
+    "I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic."
 )
+
+GENERAL_KNOWLEDGE_SYSTEM_PROMPT = """You are ReForge, a helpful, highly accurate AI assistant.
+
+## Rules
+1. You are answering a question using your general knowledge because the user's uploaded documents did not contain any relevant information.
+2. Structure your answers neatly. You MUST use proper Markdown syntax for lists (e.g., using `- ` or `* ` at the start of each line) when listing items, features, or points. Use bolding and tables heavily to keep answers clean and highly readable.
+3. Be concise and accurate. Answer naturally as if explaining the topic directly to the user.
+4. CRITICAL: You MUST be 100% certain of the facts. Do NOT hallucinate, invent, or guess information.
+5. You may use the Conversation History to understand pronouns or context for the Current Question."""
+
+GENERAL_KNOWLEDGE_USER_PROMPT = """## Conversation History
+{history}
+
+## Current Question
+{question}
+
+## Instructions
+Answer the Current Question naturally and cleanly using your general knowledge.
+You MUST start your response exactly with this phrase: "I couldn't find any information about this in your uploaded documents, but based on my general knowledge: "
+If you do not know the answer with absolute certainty, instead reply exactly with: "I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic."
+"""
 
 CRITIC_SYSTEM_PROMPT = """You are a strict evaluator grading an AI's answer against source documents.
 

@@ -18,6 +18,8 @@ from app.models.schemas import SourceDocument
 from app.prompts import (
     GENERATOR_SYSTEM_PROMPT,
     GENERATOR_USER_PROMPT,
+    GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
+    GENERAL_KNOWLEDGE_USER_PROMPT,
     NO_DOCUMENTS_RESPONSE,
     NO_RELEVANT_DOCS_RESPONSE,
 )
@@ -48,20 +50,45 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     # Handle empty retrieval results
     if not docs:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.info("No retrieved docs — returning fallback answer")
+        logger.info("No retrieved docs — falling back to general knowledge")
 
         trace_entry = TraceEntry(
             node="generate",
             execution_time_ms=round(elapsed_ms, 2),
             input_summary=f"question='{question[:60]}', docs=0",
-            output_summary="fallback: no documents retrieved",
+            output_summary="fallback: generated from general knowledge",
             attempt=attempt,
             decision=None,
             retrieval_diagnostics=[],
         )
 
+        chat_history = state.get("chat_history", [])
+        history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]) if chat_history else "No previous conversation history."
+        
+        user_prompt = GENERAL_KNOWLEDGE_USER_PROMPT.format(
+            history=history_str,
+            question=question,
+        )
+
+        if stream_callback:
+            logger.info("Using streaming LLM invocation for general knowledge fallback")
+            stream_callback({"type": "clear"})
+            chunks = []
+            for chunk in llm.invoke_stream(
+                prompt=user_prompt,
+                system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
+            ):
+                chunks.append(chunk)
+                stream_callback({"type": "token", "content": chunk})
+            answer = "".join(chunks)
+        else:
+            answer = llm.invoke(
+                prompt=user_prompt,
+                system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
+            )
+
         return {
-            "answer": NO_DOCUMENTS_RESPONSE,
+            "answer": answer,
             "sources": [],
             "trace": state.get("trace", []) + [trace_entry],
         }
@@ -205,14 +232,39 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             node="generate",
             execution_time_ms=round(elapsed_ms, 2),
             input_summary=f"question='{question[:60]}', docs={len(docs)}",
-            output_summary="fallback: no docs above thresholds",
+            output_summary="fallback: generated from general knowledge",
             attempt=attempt,
             decision=None,
             retrieval_diagnostics=diagnostics,
         )
 
+        chat_history = state.get("chat_history", [])
+        history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history]) if chat_history else "No previous conversation history."
+        
+        user_prompt = GENERAL_KNOWLEDGE_USER_PROMPT.format(
+            history=history_str,
+            question=question,
+        )
+
+        if stream_callback:
+            logger.info("Using streaming LLM invocation for general knowledge fallback")
+            stream_callback({"type": "clear"})
+            chunks = []
+            for chunk in llm.invoke_stream(
+                prompt=user_prompt,
+                system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
+            ):
+                chunks.append(chunk)
+                stream_callback({"type": "token", "content": chunk})
+            answer = "".join(chunks)
+        else:
+            answer = llm.invoke(
+                prompt=user_prompt,
+                system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
+            )
+
         return {
-            "answer": NO_RELEVANT_DOCS_RESPONSE,
+            "answer": answer,
             "sources": [],
             "trace": state.get("trace", []) + [trace_entry],
         }

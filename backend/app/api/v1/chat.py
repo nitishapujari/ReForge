@@ -355,6 +355,9 @@ async def chat_stream(
                 )
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": result})
             except Exception as e:
+                import traceback
+                with open("error.log", "w") as f:
+                    f.write(traceback.format_exc())
                 logger.error("Streaming generation failed: %s", str(e))
                 clean_error = get_user_facing_error(e)
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
@@ -387,8 +390,13 @@ async def chat_stream(
                     verification_status = result.get("verification_status", "VERIFIED")
                     
                     response_type = "GROUNDED"
-                    if final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE) or final_answer.startswith(NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE) or final_answer == NO_DOCUMENTS_RESPONSE:
+                    if final_answer.startswith(NO_DOCUMENTS_RESPONSE):
                         response_type = "NO_CONTEXT"
+                        sources = []
+                        grounded = False
+                        confidence = 0.0
+                    elif NO_RELEVANT_DOCS_RESPONSE in final_answer or NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in final_answer:
+                        response_type = "GENERAL_KNOWLEDGE"
                         sources = []
                         grounded = False
                         confidence = 0.0                    
@@ -426,7 +434,8 @@ async def chat_stream(
                         "attempts": attempts,
                         "sources": sources_dump,
                         "trace_available": bool(trace_data),
-                        "trace_data": trace_data
+                        "trace_data": trace_data,
+                        "final_answer": final_answer
                     }
                     yield f"data: {json.dumps(final_event)}\n\n"
                     break

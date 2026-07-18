@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 def retrieve(
     query: str,
     top_k: int = DEFAULT_TOP_K,
+    score_threshold: float = 0.75,
 ) -> dict:
     """
     Perform semantic search against the vector store.
@@ -23,6 +24,7 @@ def retrieve(
     Args:
         query: The search query string.
         top_k: Number of top results to return.
+        score_threshold: Minimum similarity score (0.0 to 1.0) to include a result.
 
     Returns:
         Dict with keys:
@@ -61,23 +63,37 @@ def retrieve(
     # Convert cosine distances to similarity scores
     # ChromaDB cosine distance: 0 = identical, 2 = opposite
     # Normalized Similarity = 1 - (distance / 2) → range [0, 1]
-    similarity_scores = [
+    raw_similarity_scores = [
         round(1.0 - (d / 2.0), 4) for d in distances
     ]
 
+    # Filter by score_threshold
+    filtered_documents = []
+    filtered_metadatas = []
+    filtered_distances = []
+    similarity_scores = []
+
+    for doc, meta, dist, score in zip(documents, metadatas, distances, raw_similarity_scores):
+        if score >= score_threshold:
+            filtered_documents.append(doc)
+            filtered_metadatas.append(meta)
+            filtered_distances.append(dist)
+            similarity_scores.append(score)
+
     logger.info(
-        "Retrieval complete: query='%s', top_k=%d, results=%d, "
+        "Retrieval complete: query='%s', top_k=%d, results=%d (filtered from %d), "
         "best_score=%.4f, worst_score=%.4f",
         query[:80],
         top_k,
+        len(filtered_documents),
         len(documents),
         similarity_scores[0] if similarity_scores else 0.0,
         similarity_scores[-1] if similarity_scores else 0.0,
     )
 
     return {
-        "documents": documents,
-        "metadatas": metadatas,
-        "distances": distances,
+        "documents": filtered_documents,
+        "metadatas": filtered_metadatas,
+        "distances": filtered_distances,
         "similarity_scores": similarity_scores,
     }

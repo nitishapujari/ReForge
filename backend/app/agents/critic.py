@@ -9,7 +9,13 @@ import time
 from pydantic import BaseModel, Field
 
 from app.graph.state import GraphState, TraceEntry
-from app.prompts import CRITIC_SYSTEM_PROMPT, CRITIC_USER_PROMPT
+from app.prompts import (
+    CRITIC_SYSTEM_PROMPT, 
+    CRITIC_USER_PROMPT,
+    NO_DOCUMENTS_RESPONSE,
+    NO_RELEVANT_DOCS_RESPONSE,
+    NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE
+)
 from app.services import llm
 from app.utils.logger import get_logger
 
@@ -51,9 +57,9 @@ def critique_node(state: GraphState) -> dict:
 
     # If no answer was generated (e.g., fallback), we don't need a deep critique
     if (not answer or 
-        answer.startswith("I don't have any documents") or 
-        answer.startswith("No results found in uploaded docs but here are a few things I know:") or
-        answer.startswith("No results found in uploaded docs and I do not have confident general knowledge about this.")):
+        NO_DOCUMENTS_RESPONSE in answer or 
+        NO_RELEVANT_DOCS_RESPONSE in answer or
+        NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer):
         logger.info("Skipping critique for fallback answer.")
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         trace_entry = TraceEntry(

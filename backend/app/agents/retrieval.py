@@ -26,31 +26,31 @@ def is_ambiguous(question: str) -> bool:
     q_lower = question.lower().strip()
     words = q_lower.split()
     
-    # 1. Very short question
-    if len(words) < 5:
-        return True
-        
-    # 2. Contains ambiguous references
+    # 1. Check for pronouns that imply prior context
     pronouns = {"it", "its", "this", "that", "these", "those", "they", "them", "he", "she", "his", "her", "theirs"}
     for word in words:
         clean_word = re.sub(r'[^\w\s]', '', word)
         if clean_word in pronouns:
             return True
             
-    # 3. Starts with follow-up phrases
+    # 2. Check for explicit follow-up phrases
     follow_up_phrases = [
         "what about",
         "how about",
-        "and",
-        "also",
-        "why",
-        "how",
-        "can you explain more"
+        "and ",
+        "also ",
+        "tell me more",
+        "can you explain more",
+        "why is that"
     ]
     for phrase in follow_up_phrases:
         if q_lower.startswith(phrase):
             return True
             
+    # 3. Very short query without a clear subject (e.g., "why?", "how?")
+    if len(words) <= 2:
+        return True
+        
     return False
 
 
