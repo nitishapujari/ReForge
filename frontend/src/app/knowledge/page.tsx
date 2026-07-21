@@ -41,7 +41,7 @@ export default function KnowledgeBasePage() {
       setErrorMsg(null)
     }
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/documents")
+      const res = await fetch("/api/v1/documents")
       if (!res.ok) throw new Error("Failed to fetch documents")
       const data: DocumentData[] = await res.json()
       // Sort by newest first
@@ -97,7 +97,7 @@ export default function KnowledgeBasePage() {
     if (!documentToDelete) return
     setIsDeleting(true)
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/v1/documents/${documentToDelete.document_id}`, {
+      const res = await fetch(`/api/v1/documents/${documentToDelete.document_id}`, {
         method: 'DELETE'
       })
       if (!res.ok) throw new Error("Failed to delete document")

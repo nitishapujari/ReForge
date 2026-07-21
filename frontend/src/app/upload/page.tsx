@@ -122,7 +122,7 @@ export default function UploadPage() {
     formData.append("file", task.file)
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/v1/documents/upload", {
+      const response = await fetch("/api/v1/documents/upload", {
         method: "POST",
         body: formData,
         signal: abortController.signal
@@ -175,7 +175,7 @@ export default function UploadPage() {
     formData.append("file", task.file)
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/v1/documents/${task.duplicateData.existing_document_id}`, {
+      const response = await fetch(`/api/v1/documents/${task.duplicateData.existing_document_id}`, {
         method: "PUT",
         body: formData,
         signal: abortController.signal
@@ -209,7 +209,7 @@ export default function UploadPage() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/v1/documents")
+        const response = await fetch("/api/v1/documents")
         if (!response.ok) return
         
         const docs = await response.json()
@@ -233,10 +233,6 @@ export default function UploadPage() {
         console.error("Polling error", e)
       }
     }, 2000)
-
-    // Store interval id on window or a ref if needed, but we can also just let it run.
-    // Since we want to support cancellation, we should store it.
-    // For simplicity, we attach it to the task via a custom property if we wanted, but we'll manage cancellation by checking document_id
   }
 
   const cancelTask = async (taskId: string) => {
@@ -252,9 +248,9 @@ export default function UploadPage() {
     if (task.document_id && !["indexed successfully", "error", "canceled"].includes(task.status)) {
       // It's processing in the backend. Call DELETE to stop it.
       try {
-        await fetch(`http://127.0.0.1:8000/api/v1/documents/${task.document_id}`, { method: "DELETE" })
-      } catch (e) {
-        console.error("Failed to cancel on backend", e)
+        await fetch(`/api/v1/documents/${task.document_id}`, { method: "DELETE" })
+      } catch (err) {
+        console.error("Failed to cancel on backend", err)
       }
       updateTask(taskId, { status: "canceled", progress: 0 })
       return

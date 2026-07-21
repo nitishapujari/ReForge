@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     LANGSMITH_API_KEY: str | None = None
     LANGSMITH_PROJECT: str = "reforge"
 
+    # --- Auth ---
+    JWT_SECRET: str = "super-secret-key-for-dev-only-change-in-prod"
+    JWT_ALGORITHM: str = "HS256"
+
     # --- Server ---
     APP_TITLE: str = "ReForge API"
     APP_DESCRIPTION: str = "The Self-Healing RAG Pipeline"

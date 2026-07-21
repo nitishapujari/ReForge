@@ -15,6 +15,7 @@ logger = get_logger(__name__)
 
 def retrieve(
     query: str,
+    user_id: str,
     top_k: int = DEFAULT_TOP_K,
     score_threshold: float = RELEVANCE_THRESHOLD,
 ) -> dict:
@@ -23,6 +24,7 @@ def retrieve(
 
     Args:
         query: The search query string.
+        user_id: The UUID of the user to filter documents by.
         top_k: Number of top results to return.
         score_threshold: Minimum similarity score (0.0 to 1.0) to include a result.
 
@@ -52,6 +54,7 @@ def retrieve(
     results = collection.query(
         query_texts=[query],
         n_results=effective_k,
+        where={"user_id": user_id},
         include=["documents", "metadatas", "distances"],
     )
 

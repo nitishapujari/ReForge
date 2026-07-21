@@ -46,6 +46,12 @@ class ChatSession(Base):
         default=None,
         doc="Optional session title, auto-generated from first message.",
     )
+    user_id: str = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     created_at: datetime = Column(
         DateTime(timezone=True),
         default=_utcnow,

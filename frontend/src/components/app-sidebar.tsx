@@ -7,6 +7,8 @@ import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
 import { Logo } from "@/components/logo"
 import { useUser } from "@/contexts/user-context"
+import { useSession, signOut } from "next-auth/react"
+import { LogOut } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -58,7 +60,13 @@ const navItems = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
-  const { user } = useUser()
+  const { user: userContextUser } = useUser()
+  const { data: session } = useSession()
+  const user = session?.user || userContextUser
+  
+  const displayEmail = session?.user?.email || "No email"
+  const displayName = session?.user?.name || session?.user?.email || userContextUser?.fullName || "User"
+  const displayInitials = session?.user?.email ? session.user.email.substring(0, 2).toUpperCase() : userContextUser?.avatarInitials || "U"
 
   return (
     <Sidebar {...props} className="bg-background/40 backdrop-blur-xl border-r shadow-lg border-sidebar-border/50">
@@ -123,10 +131,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 }
               >
                 <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarFallback className="rounded-lg">{user?.avatarInitials}</AvatarFallback>
+                  <AvatarFallback className="rounded-lg">{displayInitials}</AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user?.fullName}</span>
+                  <span className="truncate font-semibold">{displayName}</span>
                 </div>
                 <ChevronsUpDown className="ml-auto size-4" />
               </DropdownMenuTrigger>
@@ -140,10 +148,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   <DropdownMenuLabel className="p-0 font-normal">
                     <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                       <Avatar className="h-8 w-8 rounded-lg">
-                        <AvatarFallback className="rounded-lg">{user?.avatarInitials}</AvatarFallback>
+                        <AvatarFallback className="rounded-lg">{displayInitials}</AvatarFallback>
                       </Avatar>
                       <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">{user?.fullName}</span>
+                        <span className="truncate font-semibold">{displayName}</span>
                       </div>
                     </div>
                   </DropdownMenuLabel>
@@ -165,6 +173,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 <DropdownMenuItem render={<Link href="/about" className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full" />}>
                   <Info className="mr-2 h-4 w-4" />
                   About ReForge
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full text-red-500 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-950/50"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Log out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

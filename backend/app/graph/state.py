@@ -32,6 +32,7 @@ class GraphState(TypedDict):
     # --- Input (set once at graph entry) ---
     question: str
     session_id: str
+    user_id: str
     chat_history: list[dict]
 
     # --- Retrieval node ---

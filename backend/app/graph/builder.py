@@ -129,38 +129,41 @@ def compile_graph():
     return compiled
 
 
-def get_initial_state(question: str, session_id: str, chat_history: list[dict] | None = None) -> GraphState:
+def get_initial_state(question: str, session_id: str, user_id: str, chat_history: list[dict] | None = None) -> GraphState:
     """
     Create the initial state for a graph invocation.
 
     Args:
         question: The user's question.
         session_id: The chat session UUID.
+        user_id: The user's UUID.
         chat_history: The recent conversation history.
 
     Returns:
-        A fully initialized GraphState dict.
+        A new GraphState dictionary.
     """
-    return GraphState(
-        question=question,
-        session_id=session_id,
-        chat_history=chat_history or [],
-        retrieval_query=None,
-        rewritten_question=None,
-        retrieved_docs=[],
-        retrieved_metadatas=[],
-        similarity_scores=[],
-        top_k=DEFAULT_TOP_K,
-        answer=None,
-        grounded=False,
-        confidence=0.0,
-        critic_feedback=None,
-        unsupported_claims=[],
-        missing_information=[],
-        attempts=0,
-        max_attempts=MAX_RETRIES,
-        decision=None,
-        final_answer=None,
-        sources=[],
-        trace=[],
-    )
+    return {
+        "question": question,
+        "session_id": session_id,
+        "user_id": user_id,
+        "chat_history": chat_history or [],
+        "retrieval_query": None,
+        "rewritten_question": None,
+        "retrieved_docs": [],
+        "retrieved_metadatas": [],
+        "similarity_scores": [],
+        "top_k": 5,
+        "answer": None,
+        "grounded": None,
+        "confidence": None,
+        "critic_feedback": None,
+        "unsupported_claims": [],
+        "missing_information": [],
+        "verification_status": "PENDING",
+        "attempts": 0,
+        "max_attempts": 3,
+        "decision": None,
+        "final_answer": None,
+        "sources": [],
+        "trace": [],
+    }

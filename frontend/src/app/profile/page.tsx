@@ -1,18 +1,23 @@
 "use client"
 
 import { useUser } from "@/contexts/user-context"
+import { useSession } from "next-auth/react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { User2, Calendar, Monitor, CheckCircle2 } from "lucide-react"
 
 export default function ProfilePage() {
-  const { user } = useUser()
+  const { user: contextUser } = useUser()
+  const { data: session } = useSession()
 
-  if (!user) return null
+  const fallbackUser = contextUser
+  const displayName = session?.user?.name || session?.user?.email || fallbackUser?.fullName || "User"
+  const displayId = session?.user?.id || fallbackUser?.id || "Unknown"
+  const initials = displayName.substring(0, 2).toUpperCase()
 
   // Format date safely
-  const joinedDate = new Date(user.createdAt).toLocaleDateString('en-US', {
+  const joinedDate = new Date(fallbackUser?.createdAt || new Date()).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -37,13 +42,13 @@ export default function ProfilePage() {
             <div className="flex items-center gap-6">
               <Avatar className="h-20 w-20 rounded-xl shadow-sm border">
                 <AvatarFallback className="text-2xl rounded-xl bg-primary/5 text-primary">
-                  {user.avatarInitials}
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="space-y-1">
-                <h3 className="font-semibold text-xl">{user.fullName}</h3>
+                <h3 className="font-semibold text-xl">{displayName}</h3>
                 <p className="text-sm text-muted-foreground flex items-center gap-1.5">
-                  <User2 className="w-4 h-4" /> User ID: <span className="font-mono text-xs">{user.id}</span>
+                  <User2 className="w-4 h-4" /> User ID: <span className="font-mono text-xs">{displayId}</span>
                 </p>
               </div>
             </div>
@@ -62,7 +67,7 @@ export default function ProfilePage() {
                 <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <Monitor className="w-4 h-4" /> Theme Preference
                 </p>
-                <p className="text-base font-medium capitalize">{user.themePreference}</p>
+                <p className="text-base font-medium capitalize">{fallbackUser?.themePreference || "system"}</p>
               </div>
 
               <div className="space-y-1">
@@ -70,7 +75,7 @@ export default function ProfilePage() {
                   <CheckCircle2 className="w-4 h-4" /> Onboarding Status
                 </p>
                 <p className="text-base font-medium">
-                  {user.onboardingCompleted ? "Completed" : "Pending"}
+                  {fallbackUser?.onboardingCompleted ? "Completed" : "Pending"}
                 </p>
               </div>
             </div>

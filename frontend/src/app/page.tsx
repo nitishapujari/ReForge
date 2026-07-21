@@ -314,8 +314,8 @@ function PersonalizedDashboard() {
     const fetchDashboardData = async () => {
       try {
         const [docsRes, histRes] = await Promise.all([
-          fetch("http://127.0.0.1:8000/api/v1/documents").catch(() => null),
-          fetch("http://127.0.0.1:8000/api/v1/history").catch(() => null)
+          fetch("/api/v1/documents").catch(() => null),
+          fetch("/api/v1/history").catch(() => null)
         ])
         
         if (docsRes?.ok) {

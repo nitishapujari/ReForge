@@ -139,6 +139,7 @@ def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
 
 def process_document(
     document_id: str,
+    user_id: str,
     filename: str,
     file_content: bytes,
     file_hash: str | None = None,
@@ -198,6 +199,7 @@ def process_document(
             
             meta = {
                 "document_id": document_id,
+                "user_id": user_id,
                 "filename": filename,
                 "page_number": page_number,
                 "chunk_number": chunk_counter,

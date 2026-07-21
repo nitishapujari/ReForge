@@ -298,7 +298,7 @@ export default function TracePage() {
   useEffect(() => {
     const fetchSessions = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/api/v1/history")
+        const res = await fetch("/api/v1/history")
         if (!res.ok) throw new Error("Failed to load sessions")
         const data = await res.json()
         setSessions(data)
@@ -322,7 +322,7 @@ export default function TracePage() {
       setLoadingTrace(true)
       setErrorMsg(null)
       try {
-        const res = await fetch(`http://127.0.0.1:8000/api/v1/trace/${selectedSessionId}`)
+        const res = await fetch(`/api/v1/trace/${selectedSessionId}`)
         if (!res.ok) throw new Error("Failed to fetch execution trace")
         const data = await res.json()
         setTraceData(data)

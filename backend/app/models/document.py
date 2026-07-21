@@ -12,6 +12,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    ForeignKey,
+    Boolean,
 )
 
 from app.models.database import Base
@@ -39,6 +41,12 @@ class Document(Base):
         index=True,
         doc="SHA-256 hash of the file content. NULL for legacy documents.",
     )
+    user_id: str = Column(
+        String(36),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     chunk_count: int = Column(
         Integer,
         default=0,
@@ -52,6 +60,16 @@ class Document(Base):
         Text,
         nullable=True,
         doc="Error message if background ingestion failed.",
+    )
+    is_deleted: bool = Column(
+        Boolean,
+        default=False,
+        nullable=False,
+        doc="Soft delete flag",
+    )
+    deleted_at: datetime = Column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: datetime = Column(
         DateTime(timezone=True),

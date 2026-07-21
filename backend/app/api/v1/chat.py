@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import asyncio
 import json
 
+from app.api.deps import SessionDep, CurrentUser
 from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
 from app.models.schemas import ChatRequest, ChatResponse, TraceEntrySchema
@@ -69,23 +70,24 @@ compiled_graph = compile_graph()
 )
 async def chat(
     request: ChatRequest,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> ChatResponse:
     """Process a chat request through the RAG pipeline."""
     # Step 1: Resolve or create session
     if request.session_id:
-        session = await chat_history.get_session(db, request.session_id)
+        session = await chat_history.get_session(db, request.session_id, current_user.id)
         if session is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {request.session_id} not found.",
+                detail={"success": False, "error": {"code": "NOT_FOUND", "message": f"Session {request.session_id} not found."}}
             )
         session_id = session.id
         logger.info("Continuing session: %s", session_id)
     else:
         # Create a new session with the question as the title
         title = request.question[:100]
-        session = await chat_history.create_session(db, title=title)
+        session = await chat_history.create_session(db, user_id=current_user.id, title=title)
         session_id = session.id
         logger.info("Created new session: %s", session_id)
 
@@ -158,6 +160,7 @@ async def chat(
         initial_state = get_initial_state(
             question=request.question,
             session_id=session_id,
+            user_id=current_user.id,
             chat_history=chat_history_data,
         )
         # Execute the graph synchronously in a background thread
@@ -244,21 +247,22 @@ async def chat(
 )
 async def chat_stream(
     request: ChatRequest,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ):
     """Process a chat request and stream the response tokens."""
     if request.session_id:
-        session = await chat_history.get_session(db, request.session_id)
+        session = await chat_history.get_session(db, request.session_id, current_user.id)
         if session is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Session {request.session_id} not found.",
+                detail={"success": False, "error": {"code": "NOT_FOUND", "message": f"Session {request.session_id} not found."}}
             )
         session_id = session.id
         logger.info("Continuing session (stream): %s", session_id)
     else:
         title = request.question[:100]
-        session = await chat_history.create_session(db, title=title)
+        session = await chat_history.create_session(db, user_id=current_user.id, title=title)
         session_id = session.id
         logger.info("Created new session (stream): %s", session_id)
 
@@ -370,6 +374,7 @@ async def chat_stream(
                 initial_state = get_initial_state(
                     question=request.question,
                     session_id=session_id,
+                    user_id=current_user.id,
                     chat_history=chat_history_data,
                 )
                 result = compiled_graph.invoke(

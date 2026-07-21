@@ -15,39 +15,42 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-async def create_session(db: AsyncSession, title: str | None = None) -> ChatSession:
+async def create_session(db: AsyncSession, user_id: str, title: str | None = None) -> ChatSession:
     """
     Create a new chat session.
 
     Args:
         db: Async database session.
+        user_id: UUID of the user.
         title: Optional session title.
 
     Returns:
         The newly created ChatSession.
     """
-    session = ChatSession(title=title)
+    session = ChatSession(title=title, user_id=user_id)
     db.add(session)
     await db.flush()  # Populate the auto-generated id
 
-    logger.info("Created chat session: %s", session.id)
+    logger.info("Created chat session: %s for user: %s", session.id, user_id)
     return session
 
 
-async def get_session(db: AsyncSession, session_id: str) -> ChatSession | None:
+async def get_session(db: AsyncSession, session_id: str, user_id: str) -> ChatSession | None:
     """
-    Retrieve a session by ID, including its messages.
+    Retrieve a session by ID, including its messages, enforcing user ownership.
 
     Args:
         db: Async database session.
         session_id: UUID of the chat session.
+        user_id: UUID of the user.
 
     Returns:
-        The ChatSession with messages loaded, or None if not found.
+        The ChatSession with messages loaded, or None if not found or unauthorized.
     """
     stmt = (
         select(ChatSession)
         .where(ChatSession.id == session_id)
+        .where(ChatSession.user_id == user_id)
         .options(selectinload(ChatSession.messages))
     )
     result = await db.execute(stmt)
@@ -55,13 +58,14 @@ async def get_session(db: AsyncSession, session_id: str) -> ChatSession | None:
 
 
 async def list_sessions(
-    db: AsyncSession, limit: int = 50, offset: int = 0
+    db: AsyncSession, user_id: str, limit: int = 50, offset: int = 0
 ) -> list[dict]:
     """
-    List all chat sessions with message counts, ordered by most recent.
+    List all chat sessions for a user with message counts, ordered by most recent.
 
     Args:
         db: Async database session.
+        user_id: UUID of the user.
         limit: Max sessions to return.
         offset: Pagination offset.
 
@@ -89,6 +93,7 @@ async def list_sessions(
             msg_count_subq,
             ChatSession.id == msg_count_subq.c.session_id,
         )
+        .where(ChatSession.user_id == user_id)
         .order_by(ChatSession.updated_at.desc())
         .limit(limit)
         .offset(offset)
@@ -150,18 +155,19 @@ async def add_message(
     return message
 
 
-async def delete_session(db: AsyncSession, session_id: str) -> bool:
+async def delete_session(db: AsyncSession, session_id: str, user_id: str) -> bool:
     """
     Delete a chat session and all its messages (cascade).
 
     Args:
         db: Async database session.
         session_id: UUID of the chat session.
+        user_id: UUID of the user (for ownership validation).
 
     Returns:
         True if session was found and deleted, False otherwise.
     """
-    session = await get_session(db, session_id)
+    session = await get_session(db, session_id, user_id)
     if session is None:
         return False
 
@@ -170,17 +176,18 @@ async def delete_session(db: AsyncSession, session_id: str) -> bool:
     return True
 
 
-async def delete_all_sessions(db: AsyncSession) -> int:
+async def delete_all_sessions(db: AsyncSession, user_id: str) -> int:
     """
-    Delete all chat sessions and their messages (cascade).
+    Delete all chat sessions for a user and their messages (cascade).
     
     Args:
         db: Async database session.
+        user_id: UUID of the user.
         
     Returns:
         Number of sessions deleted.
     """
-    stmt = select(ChatSession)
+    stmt = select(ChatSession).where(ChatSession.user_id == user_id)
     result = await db.execute(stmt)
     sessions = result.scalars().all()
     
@@ -188,7 +195,7 @@ async def delete_all_sessions(db: AsyncSession) -> int:
     for session in sessions:
         await db.delete(session)
         
-    logger.info("Deleted all %d chat sessions.", count)
+    logger.info("Deleted all %d chat sessions for user %s.", count, user_id)
     return count
 
 

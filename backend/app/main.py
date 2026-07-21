@@ -78,23 +78,76 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         groq_model=settings.GROQ_MODEL,
     )
 
+    # --- Migration: Schema and Legacy Data ---
+    from sqlalchemy import select, text
+    from sqlalchemy.exc import OperationalError
+    import app.models.database as db_mod
+    from app.models.document import Document
+    from app.models.chat import ChatSession
+    from app.models.user import User
+    from datetime import datetime, timezone
+    import uuid
+
     # Initialize database (creates tables if they don't exist)
     await init_db(settings.DATABASE_URL, settings.database_path)
     logger.info("Database initialized: %s", settings.database_path)
 
-    # --- Migration: Legacy Documents ---
-    from sqlalchemy import select
-    from app.models.database import get_session_factory
-    from app.models.document import Document
-    from app.services.vectorstore import get_collection
-    from datetime import datetime, timezone
-
-    factory = get_session_factory()
+    factory = db_mod.get_session_factory()
     async with factory() as session:
-        # Check if documents table is empty
-        result = await session.execute(select(Document.id).limit(1))
-        if not result.first():
-            try:
+        # 1. Manual Schema Migrations (since we don't use Alembic)
+        try:
+            # Check if user_id exists on documents
+            await session.execute(text("SELECT user_id FROM documents LIMIT 1"))
+        except OperationalError:
+            logger.info("Migrating schema: Adding missing columns to documents and chat_sessions")
+            async with db_mod._engine.begin() as conn:
+                try:
+                    await conn.execute(text("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)"))
+                    await conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT 0 NOT NULL"))
+                    await conn.execute(text("ALTER TABLE documents ADD COLUMN deleted_at DATETIME"))
+                    await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(36)"))
+                except Exception as e:
+                    logger.warning("Schema migration error (might be already applied): %s", e)
+
+        # 2. Create Default Admin User
+        admin_email = "admin@reforge.local"
+        result = await session.execute(select(User).where(User.email == admin_email))
+        admin_user = result.scalar_one_or_none()
+        
+        if not admin_user:
+            admin_user = User(
+                id=str(uuid.uuid4()),
+                email=admin_email,
+                provider="credentials",
+                # bcrypt hash for "admin" -> $2b$12$NqL.yQ0D2/G0H./N6yK/UeBv3sI5x4M.Gq4V7uG0.
+                # But since we haven't installed passlib yet, we leave it None or a dummy for now.
+                # The user can't login via credentials until we install bcrypt, but they can still own docs.
+                hashed_password=None, 
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+            )
+            session.add(admin_user)
+            await session.commit()
+            logger.info("Created default admin user: %s (UUID: %s)", admin_email, admin_user.id)
+
+        # 3. Migrate Legacy Data (Assign orphaned records to admin)
+        try:
+            # Update documents
+            docs_updated = await session.execute(
+                text("UPDATE documents SET user_id = :admin_id WHERE user_id IS NULL"),
+                {"admin_id": admin_user.id}
+            )
+            # Update chat sessions
+            chats_updated = await session.execute(
+                text("UPDATE chat_sessions SET user_id = :admin_id WHERE user_id IS NULL"),
+                {"admin_id": admin_user.id}
+            )
+            await session.commit()
+            
+            # 4. Migrate ChromaDB legacy docs if documents table is completely empty
+            result = await session.execute(select(Document.id).limit(1))
+            if not result.first():
+                from app.services.vectorstore import get_collection
                 collection = get_collection()
                 metadata_results = collection.get(include=["metadatas"])
                 if metadata_results and metadata_results.get("metadatas"):
@@ -103,14 +156,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         if not meta: continue
                         doc_id = meta.get("document_id")
                         if not doc_id: continue
-                        
                         if doc_id not in legacy_docs:
                             created_str = meta.get("created_at", "")
                             try:
                                 dt = datetime.fromisoformat(created_str)
                             except ValueError:
                                 dt = datetime.now(timezone.utc)
-                                
                             legacy_docs[doc_id] = {
                                 "id": doc_id,
                                 "filename": meta.get("filename", "unknown"),
@@ -124,16 +175,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                             id=doc_data["id"],
                             filename=doc_data["filename"],
                             file_hash=None,
+                            user_id=admin_user.id,
                             chunk_count=doc_data["chunk_count"],
                             status="completed",
+                            is_deleted=False,
                             created_at=doc_data["created_at"],
                             updated_at=doc_data["created_at"],
                         )
                         session.add(new_doc)
                     await session.commit()
-                    logger.info("Migrated %d legacy documents to SQLite", len(legacy_docs))
-            except Exception as e:
-                logger.error("Failed to migrate legacy documents: %s", e)
+                    logger.info("Migrated %d legacy ChromaDB documents to SQLite for user %s", len(legacy_docs), admin_user.id)
+        except Exception as e:
+            logger.error("Failed to migrate legacy data: %s", e)
 
     # Store settings in app state for dependency injection
     app.state.settings = settings

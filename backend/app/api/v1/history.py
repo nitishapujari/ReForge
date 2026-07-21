@@ -8,6 +8,7 @@ and deleting sessions.
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import SessionDep, CurrentUser
 from app.models.database import get_db_session
 from app.models.schemas import (
     MessageResponse,
@@ -44,12 +45,13 @@ router = APIRouter(prefix="/history", tags=["Chat History"])
     },
 )
 async def list_sessions(
+    current_user: CurrentUser,
     limit: int = Query(default=50, ge=1, le=100, description="Max sessions"),
     offset: int = Query(default=0, ge=0, description="Pagination offset"),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
     """List all chat sessions with message counts."""
-    return await chat_history.list_sessions(db, limit=limit, offset=offset)
+    return await chat_history.list_sessions(db, user_id=current_user.id, limit=limit, offset=offset)
 
 
 import json
@@ -168,10 +170,11 @@ def get_message_metadata_with_fallback(msg) -> dict:
 )
 async def get_session(
     session_id: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Get a specific session and all its messages."""
-    session = await chat_history.get_session(db, session_id)
+    session = await chat_history.get_session(db, session_id, current_user.id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -208,10 +211,11 @@ async def get_session(
 )
 async def delete_session(
     session_id: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a session and all associated messages."""
-    deleted = await chat_history.delete_session(db, session_id)
+    deleted = await chat_history.delete_session(db, session_id, current_user.id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -229,8 +233,9 @@ async def delete_session(
     },
 )
 async def delete_all_sessions(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Delete all sessions and all associated messages."""
-    count = await chat_history.delete_all_sessions(db)
+    count = await chat_history.delete_all_sessions(db, current_user.id)
     return {"deleted_count": count, "message": f"Successfully deleted {count} sessions."}

@@ -19,11 +19,13 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import CurrentUser
 from app.models.database import get_db_session, get_session_factory
 from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
 from app.services import document_processor, vectorstore
 from app.utils.logger import get_logger
+from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 
@@ -32,6 +34,7 @@ router = APIRouter(prefix="/documents", tags=["Documents"])
 
 async def _process_and_ingest_document(
     document_id: str,
+    user_id: str,
     filename: str,
     file_content: bytes,
     file_hash: str | None,
@@ -46,6 +49,7 @@ async def _process_and_ingest_document(
         _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
             document_processor.process_document,
             document_id=document_id,
+            user_id=user_id,
             filename=filename,
             file_content=file_content,
             file_hash=file_hash,
@@ -88,6 +92,7 @@ async def _process_and_ingest_document(
 
 async def _replace_document(
     document_id: str,
+    user_id: str,
     filename: str,
     file_content: bytes,
     file_hash: str | None,
@@ -101,6 +106,7 @@ async def _replace_document(
         _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
             document_processor.process_document,
             document_id=document_id,
+            user_id=user_id,
             filename=filename,
             file_content=file_content,
             file_hash=file_hash,
@@ -160,6 +166,7 @@ async def _replace_document(
 )
 async def upload_document(
     background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
     file: UploadFile = File(
         ..., description="PDF or TXT file to upload (max 20MB)"
     ),
@@ -178,7 +185,9 @@ async def upload_document(
 
     # Check for duplicate
     stmt = select(Document).where(
-        (Document.file_hash == file_hash) | (Document.filename == file.filename)
+        (Document.user_id == current_user.id) &
+        (Document.is_deleted == False) &
+        ((Document.file_hash == file_hash) | (Document.filename == file.filename))
     )
     result = await db.execute(stmt)
     existing_docs = result.scalars().all()
@@ -199,7 +208,7 @@ async def upload_document(
         )
 
     # Create new document record in SQLite
-    new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing")
+    new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id)
     db.add(new_doc)
     await db.commit()
     await db.refresh(new_doc)
@@ -208,6 +217,7 @@ async def upload_document(
     background_tasks.add_task(
         _process_and_ingest_document,
         document_id=new_doc.id,
+        user_id=current_user.id,
         filename=file.filename,
         file_content=file_content,
         file_hash=file_hash,
@@ -231,6 +241,7 @@ async def upload_document(
 async def replace_document(
     document_id: str,
     background_tasks: BackgroundTasks,
+    current_user: CurrentUser,
     file: UploadFile = File(
         ..., description="PDF or TXT file to upload (max 20MB)"
     ),
@@ -244,7 +255,7 @@ async def replace_document(
         )
 
     doc = await db.get(Document, document_id)
-    if not doc:
+    if not doc or doc.user_id != current_user.id or doc.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found.",
@@ -259,6 +270,7 @@ async def replace_document(
     background_tasks.add_task(
         _replace_document,
         document_id=document_id,
+        user_id=current_user.id,
         filename=file.filename,
         file_content=file_content,
         file_hash=file_hash,
@@ -279,10 +291,14 @@ async def replace_document(
     description="List all ingested documents with chunk counts.",
 )
 async def list_documents(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session)
 ) -> list[dict]:
-    """List all documents currently in SQLite."""
-    stmt = select(Document).order_by(Document.created_at.desc())
+    """List all active documents for the current user."""
+    stmt = select(Document).where(
+        (Document.user_id == current_user.id) & 
+        (Document.is_deleted == False)
+    ).order_by(Document.created_at.desc())
     result = await db.execute(stmt)
     documents = result.scalars().all()
     
@@ -306,9 +322,10 @@ async def list_documents(
 )
 async def delete_document(
     document_id: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session)
 ) -> dict:
-    """Delete a document and all its chunks."""
+    """Soft Delete a document and remove all its chunks from the vector store."""
     # First delete from vector store
     deleted_chunks = 0
     try:
@@ -316,15 +333,17 @@ async def delete_document(
     except Exception as e:
         logger.warning(f"Vector store delete failed or missed: {e}")
         
-    # Then delete from SQLite
+    # Then Soft delete from SQLite
     doc = await db.get(Document, document_id)
-    if not doc:
+    if not doc or doc.user_id != current_user.id or doc.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found.",
         )
         
-    await db.delete(doc)
+    doc.is_deleted = True
+    doc.deleted_at = datetime.now(timezone.utc)
+    doc.status = "deleted"
     await db.commit()
 
     return {
