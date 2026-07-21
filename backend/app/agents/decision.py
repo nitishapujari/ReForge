@@ -102,11 +102,14 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
     if decision == "fail":
         output_summary["reason"] = "Maximum retries exhausted without producing a grounded answer."
     elif decision == "accept":
-        output_summary["reason"] = "The draft was accepted because verification succeeded or was unavailable."
+        if attempts >= max_attempts and missing_information:
+             output_summary["reason"] = "Maximum retries exhausted. The draft was accepted as best-effort despite missing information."
+        else:
+             output_summary["reason"] = "The answer was successfully verified against the retrieved sources and delivered."
     elif decision == "rewrite":
-        output_summary["reason"] = "The critic flagged missing information. Retrying search with new keywords."
+        output_summary["reason"] = "The critic detected missing information. Retrying search with new keywords."
     elif decision == "escalate":
-        output_summary["reason"] = "The critic flagged missing information. Escalating retrieval."
+        output_summary["reason"] = "The critic detected missing information. Retrieving more documents."
 
     trace_entry = TraceEntry(
         node="decision",

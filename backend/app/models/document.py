@@ -37,7 +37,6 @@ class Document(Base):
     file_hash: str = Column(
         String(64),
         nullable=True,
-        unique=True,
         index=True,
         doc="SHA-256 hash of the file content. NULL for legacy documents.",
     )

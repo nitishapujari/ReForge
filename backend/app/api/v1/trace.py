@@ -16,6 +16,8 @@ logger = get_logger(__name__)
 
 router = APIRouter(tags=["Trace"])
 
+from app.api.deps import CurrentUser
+
 @router.get(
     "/trace/{session_id}",
     response_model=TraceResponse,
@@ -28,11 +30,12 @@ router = APIRouter(tags=["Trace"])
 )
 async def get_session_traces(
     session_id: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session),
 ) -> TraceResponse:
     """Fetch traces for a session."""
     # Validate session exists
-    session = await chat_history.get_session(db, session_id)
+    session = await chat_history.get_session(db, session_id, current_user.id)
     if session is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

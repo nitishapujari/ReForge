@@ -145,7 +145,7 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
         }
 
     # Perform retrieval
-    results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k)
+    results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k, document_ids=state.get("document_ids"))
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 

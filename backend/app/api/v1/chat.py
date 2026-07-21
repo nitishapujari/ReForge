@@ -162,6 +162,7 @@ async def chat(
             session_id=session_id,
             user_id=current_user.id,
             chat_history=chat_history_data,
+            document_ids=request.document_ids,
         )
         # Execute the graph synchronously in a background thread
         result = await asyncio.to_thread(compiled_graph.invoke, initial_state)
@@ -376,6 +377,7 @@ async def chat_stream(
                     session_id=session_id,
                     user_id=current_user.id,
                     chat_history=chat_history_data,
+                    document_ids=request.document_ids,
                 )
                 result = compiled_graph.invoke(
                     initial_state,

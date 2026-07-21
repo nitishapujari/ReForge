@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useRef, useEffect, Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale } from "lucide-react"
+import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale, X, Hash } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 
 type Message = {
   id: string
@@ -33,58 +35,10 @@ type Message = {
   }
 }
 
-function ThoughtProcess() {
-  const [phase, setPhase] = useState(0)
 
-  useEffect(() => {
-    const sequence = [
-      { text: "Scanning knowledge base...", duration: 800 },
-      { text: "Evaluating context...", duration: 800 },
-      { text: "Verifying relevance...", duration: 800 },
-      { text: "Synthesizing response...", duration: 2000 }
-    ]
-    let current = 0
-    let timeout: NodeJS.Timeout
-    
-    const run = () => {
-      setPhase(current)
-      timeout = setTimeout(() => {
-        current = (current + 1) % sequence.length
-        run()
-      }, sequence[current].duration)
-    }
-    
-    run()
-    return () => clearTimeout(timeout)
-  }, [])
-
-  const phrases = [
-    "Scanning knowledge base...",
-    "Evaluating context...",
-    "Verifying relevance...",
-    "Synthesizing response..."
-  ]
-
-  return (
-    <div className="h-6 flex items-center px-1 overflow-hidden">
-      <AnimatePresence mode="popLayout">
-        <motion.div
-          key={phase}
-          initial={{ y: 15, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: -15, opacity: 0, transition: { duration: 0.1 } }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="text-xs font-mono text-primary/70 flex items-center gap-2"
-        >
-          <RefreshCw className="w-3 h-3 animate-spin" />
-          {phrases[phase]}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  )
-}
 
 function ChatContent() {
+  const router = useRouter()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -93,6 +47,22 @@ function ChatContent() {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [initialSuggestions, setInitialSuggestions] = useState<string[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+
+  // Document @-mentions state
+  const [availableDocs, setAvailableDocs] = useState<{document_id: string, filename: string}[]>([])
+  const [selectedDocs, setSelectedDocs] = useState<{document_id: string, filename: string}[]>([])
+  const [mentionOpen, setMentionOpen] = useState(false)
+
+  useEffect(() => {
+    fetch("/api/v1/documents")
+      .then(res => res.json())
+      .then(data => {
+        if (data && Array.isArray(data)) {
+          setAvailableDocs(data)
+        }
+      })
+      .catch(err => console.error("Failed to fetch available docs:", err))
+  }, [])
 
   const handleCopy = (id: string, content: string) => {
     navigator.clipboard.writeText(content)
@@ -208,7 +178,10 @@ function ChatContent() {
     }
 
     setMessages((prev) => [...prev, userMessage, assistantMessage])
-    if (overrideInput === undefined) setInput("")
+    if (overrideInput === undefined) {
+      setInput("")
+      setSelectedDocs([])
+    }
     setIsGenerating(true)
     setSuggestions([])
 
@@ -221,6 +194,7 @@ function ChatContent() {
         body: JSON.stringify({
           question: userMessage.content,
           ...(sessionId ? { session_id: sessionId } : {}),
+          ...(selectedDocs.length > 0 ? { document_ids: selectedDocs.map(d => d.document_id) } : {})
         }),
       })
 
@@ -280,6 +254,8 @@ function ChatContent() {
                 } else if (data.type === "done") {
                   if (!sessionId && data.session_id) {
                     setSessionId(data.session_id)
+                    router.replace(`/chat?session=${data.session_id}`)
+                    window.dispatchEvent(new Event("session-created"))
                   }
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -358,6 +334,25 @@ function ChatContent() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSend()
+    }
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setInput(val)
+    
+    if (val.endsWith("@")) {
+      setMentionOpen(true)
+    }
+  }
+  
+  const addDocumentMention = (doc: {document_id: string, filename: string}) => {
+    if (!selectedDocs.find(d => d.document_id === doc.document_id)) {
+      setSelectedDocs(prev => [...prev, doc])
+    }
+    setMentionOpen(false)
+    if (input.endsWith("@")) {
+      setInput(input.slice(0, -1))
     }
   }
 
@@ -795,52 +790,101 @@ function ChatContent() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="max-w-3xl mx-auto relative flex items-end gap-2 bg-background/60 backdrop-blur-2xl border border-primary/20 rounded-[2rem] p-2 shadow-xl hover:shadow-primary/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-2xl focus-within:shadow-primary/20 transition-all duration-300"
+          className="max-w-3xl mx-auto relative flex flex-col gap-2 bg-background/60 backdrop-blur-2xl border border-primary/20 rounded-[2rem] p-2 shadow-xl hover:shadow-primary/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-2xl focus-within:shadow-primary/20 transition-all duration-300"
         >
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            onChange={handleFileChange} 
-            className="hidden" 
-            accept=".pdf,.txt,.md,.csv" 
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0 rounded-xl h-10 w-10 mb-1 ml-1 text-muted-foreground hover:text-foreground"
-            onClick={handleUploadClick}
-            disabled={isUploading || isGenerating}
-            title="Upload Document"
-          >
-            {isUploading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Paperclip className="h-4 w-4" />
-            )}
-            <span className="sr-only">Upload</span>
-          </Button>
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask a question..."
-            className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full"
-            rows={1}
-            disabled={isGenerating}
-          />
-          <Button
-            size="icon"
-            className="shrink-0 rounded-xl h-10 w-10 mb-1 mr-1"
-            disabled={!input.trim() || isGenerating}
-            onClick={handleSend}
-          >
-            {isGenerating ? (
-              <RefreshCw className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            <span className="sr-only">Send message</span>
-          </Button>
+          {/* Selected Document Badges */}
+          {selectedDocs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2">
+              {selectedDocs.map(doc => (
+                <Badge key={doc.document_id} variant="secondary" className="text-xs bg-primary/10 text-primary hover:bg-primary/20 pr-1 py-0 border-primary/20">
+                  <FileText className="w-3 h-3 mr-1" />
+                  {doc.filename}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 ml-1 hover:bg-primary/20 rounded-full"
+                    onClick={() => setSelectedDocs(prev => prev.filter(d => d.document_id !== doc.document_id))}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </Button>
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileChange} 
+              className="hidden" 
+              accept=".pdf,.txt,.md,.csv" 
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 rounded-xl h-10 w-10 mb-1 ml-1 text-muted-foreground hover:text-foreground"
+              onClick={handleUploadClick}
+              disabled={isUploading || isGenerating}
+              title="Upload Document"
+            >
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Paperclip className="h-4 w-4" />
+              )}
+              <span className="sr-only">Upload</span>
+            </Button>
+            
+            <Popover open={mentionOpen} onOpenChange={setMentionOpen}>
+              <PopoverTrigger render={<div className="flex-1 relative" />} nativeButton={false}>
+                  <Textarea
+                    value={input}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask a question... (type @ to search specific documents)"
+                    className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full"
+                    rows={1}
+                    disabled={isGenerating}
+                  />
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="start" sideOffset={10}>
+                <Command>
+                  <CommandInput placeholder="Search documents..." />
+                  <CommandList>
+                    <CommandEmpty>No documents found.</CommandEmpty>
+                    <CommandGroup>
+                      {availableDocs.map((doc) => (
+                        <CommandItem
+                          key={doc.document_id}
+                          value={doc.filename}
+                          onSelect={() => addDocumentMention(doc)}
+                          className="cursor-pointer"
+                        >
+                          <FileText className="mr-2 h-4 w-4 text-primary/70" />
+                          <span className="truncate">{doc.filename}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              size="icon"
+              className="shrink-0 rounded-xl h-10 w-10 mb-1 mr-1"
+              disabled={!input.trim() || isGenerating}
+              onClick={handleSend}
+            >
+              {isGenerating ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4" />
+              )}
+              <span className="sr-only">Send message</span>
+            </Button>
+          </div>
         </motion.div>
       </div>
     </div>

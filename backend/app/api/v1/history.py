@@ -223,6 +223,42 @@ async def delete_session(
         )
 
 
+from pydantic import BaseModel
+class RenameSessionRequest(BaseModel):
+    title: str
+
+@router.put(
+    "/{session_id}",
+    response_model=SessionResponse,
+    summary="Rename Chat Session",
+    description="Renames a chat session.",
+    responses={
+        200: {"description": "Session renamed"},
+        404: {"description": "Session not found"},
+    },
+)
+async def rename_session(
+    session_id: str,
+    request: RenameSessionRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db_session),
+) -> dict:
+    """Rename a specific chat session."""
+    session = await chat_history.rename_session(db, session_id, current_user.id, request.title)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found.",
+        )
+    return {
+        "id": session.id,
+        "title": session.title,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+        "message_count": 0, # not needed in rename response usually, but satisfies model
+    }
+
+
 @router.delete(
     "",
     status_code=status.HTTP_200_OK,

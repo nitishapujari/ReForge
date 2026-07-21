@@ -176,6 +176,29 @@ async def delete_session(db: AsyncSession, session_id: str, user_id: str) -> boo
     return True
 
 
+async def rename_session(db: AsyncSession, session_id: str, user_id: str, title: str) -> ChatSession | None:
+    """
+    Rename a chat session.
+
+    Args:
+        db: Async database session.
+        session_id: UUID of the chat session.
+        user_id: UUID of the user (for ownership validation).
+        title: The new title for the session.
+
+    Returns:
+        The updated ChatSession, or None if not found/unauthorized.
+    """
+    session = await get_session(db, session_id, user_id)
+    if session is None:
+        return None
+
+    session.title = title
+    # DB session automatically tracks this change for flush/commit
+    logger.info("Renamed chat session: %s to '%s'", session_id, title)
+    return session
+
+
 async def delete_all_sessions(db: AsyncSession, user_id: str) -> int:
     """
     Delete all chat sessions for a user and their messages (cascade).

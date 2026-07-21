@@ -18,6 +18,7 @@ def retrieve(
     user_id: str,
     top_k: int = DEFAULT_TOP_K,
     score_threshold: float = RELEVANCE_THRESHOLD,
+    document_ids: list[str] | None = None,
 ) -> dict:
     """
     Perform semantic search against the vector store.
@@ -27,6 +28,7 @@ def retrieve(
         user_id: The UUID of the user to filter documents by.
         top_k: Number of top results to return.
         score_threshold: Minimum similarity score (0.0 to 1.0) to include a result.
+        document_ids: Optional list of document IDs to restrict retrieval to.
 
     Returns:
         Dict with keys:
@@ -51,10 +53,21 @@ def retrieve(
     available = collection.count()
     effective_k = min(top_k, available)
 
+    if document_ids:
+        doc_filter = {"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}}
+        where_filter: dict = {
+            "$and": [
+                {"user_id": user_id},
+                doc_filter
+            ]
+        }
+    else:
+        where_filter: dict = {"user_id": user_id}
+
     results = collection.query(
         query_texts=[query],
         n_results=effective_k,
-        where={"user_id": user_id},
+        where=where_filter,
         include=["documents", "metadatas", "distances"],
     )
 

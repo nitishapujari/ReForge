@@ -1,9 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { MessageSquare, Library, Upload, Settings, Activity, ChevronsUpDown, User2, Monitor, Sun, Moon, Info, Plus } from "lucide-react"
+import { MessageSquare, Library, Upload, Settings, Activity, ChevronsUpDown, User2, Monitor, Sun, Moon, Info, Plus, MoreHorizontal, Edit, Trash2, Check, X } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { Logo } from "@/components/logo"
 import { useUser } from "@/contexts/user-context"
@@ -29,6 +29,7 @@ import {
   SidebarHeader,
   SidebarFooter,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -60,6 +61,9 @@ const navItems = [
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const pathname = usePathname()
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const activeSessionId = searchParams.get('session')
   const { user: userContextUser } = useUser()
   const { data: session } = useSession()
   const user = session?.user || userContextUser
@@ -67,6 +71,58 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const displayEmail = session?.user?.email || "No email"
   const displayName = session?.user?.name || session?.user?.email || userContextUser?.fullName || "User"
   const displayInitials = session?.user?.email ? session.user.email.substring(0, 2).toUpperCase() : userContextUser?.avatarInitials || "U"
+
+  const [chatSessions, setChatSessions] = React.useState<any[]>([])
+  const [editingSessionId, setEditingSessionId] = React.useState<string | null>(null)
+  const [editTitle, setEditTitle] = React.useState("")
+
+  React.useEffect(() => {
+    const fetchHistory = () => {
+      fetch("/api/v1/history")
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data)) {
+            setChatSessions(data)
+          }
+        })
+        .catch(err => console.error(err))
+    }
+    
+    fetchHistory()
+    
+    window.addEventListener("session-created", fetchHistory)
+    return () => window.removeEventListener("session-created", fetchHistory)
+  }, [pathname, activeSessionId])
+
+  const handleDeleteSession = async (id: string) => {
+    try {
+      await fetch(`/api/v1/history/${id}`, { method: 'DELETE' })
+      setChatSessions(prev => prev.filter(s => s.id !== id))
+      if (pathname === `/chat` && typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('session') === id) {
+        router.push('/chat')
+      }
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleRenameSession = async (id: string) => {
+    if (!editTitle.trim()) {
+      setEditingSessionId(null)
+      return
+    }
+    try {
+      await fetch(`/api/v1/history/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: editTitle.trim() })
+      })
+      setChatSessions(prev => prev.map(s => s.id === id ? { ...s, title: editTitle.trim() } : s))
+      setEditingSessionId(null)
+    } catch (err) {
+      console.error(err)
+    }
+  }
 
   return (
     <Sidebar {...props} className="bg-background/40 backdrop-blur-xl border-r shadow-lg border-sidebar-border/50">
@@ -94,9 +150,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton 
-                      render={<Link href={item.url} className="relative overflow-hidden" />}
+                      onClick={() => router.push(item.url)}
                       isActive={isActive}
-                      className={`relative z-0 group transition-all duration-300 ${isActive ? 'text-primary' : 'hover:text-foreground text-muted-foreground'}`}
+                      className={`relative overflow-hidden z-0 group transition-all duration-300 ${isActive ? 'text-primary' : 'hover:text-foreground text-muted-foreground'}`}
                     >
                       {isActive && (
                         <motion.div
@@ -114,6 +170,75 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </SidebarMenuItem>
                 )
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        
+        <SidebarGroup className="pt-4">
+          <SidebarGroupLabel>Recent Chats</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {chatSessions.length === 0 ? (
+                <div className="px-4 py-2 text-xs text-muted-foreground">No recent chats</div>
+              ) : (
+                chatSessions.slice(0, 10).map((chat) => (
+                  <SidebarMenuItem key={chat.id}>
+                    {editingSessionId === chat.id ? (
+                      <div className="flex items-center gap-1 w-full px-2 py-1.5" onClick={(e) => e.preventDefault()}>
+                        <input 
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameSession(chat.id)
+                            if (e.key === 'Escape') setEditingSessionId(null)
+                          }}
+                          className="flex-1 bg-background border rounded px-1.5 py-0.5 text-xs focus:outline-none"
+                          autoFocus
+                        />
+                        <button onClick={(e) => { e.preventDefault(); handleRenameSession(chat.id) }} className="p-0.5 text-green-500 hover:bg-green-500/10 rounded">
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button onClick={(e) => { e.preventDefault(); setEditingSessionId(null) }} className="p-0.5 text-muted-foreground hover:bg-muted rounded">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <SidebarMenuButton 
+                          onClick={() => {
+                            if (editingSessionId !== chat.id) router.push(`/chat?session=${chat.id}`)
+                          }}
+                          isActive={pathname === '/chat' && activeSessionId === chat.id}
+                        >
+                          <span className="truncate pr-4 flex-1 text-sm">{chat.title || "New Chat"}</span>
+                        </SidebarMenuButton>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />} onClick={(e) => e.preventDefault()}>
+                            <MoreHorizontal className="w-4 h-4" />
+                            <span className="sr-only">More</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32 z-50">
+                            <DropdownMenuItem onClick={(e) => {
+                              e.preventDefault();
+                              setEditTitle(chat.title || "New Chat")
+                              setEditingSessionId(chat.id)
+                            }}>
+                              <Edit className="w-4 h-4 mr-2" /> Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={(e) => {
+                              e.preventDefault();
+                              handleDeleteSession(chat.id)
+                            }} className="text-red-500 focus:text-red-500">
+                              <Trash2 className="w-4 h-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                  </SidebarMenuItem>
+                ))
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -157,20 +282,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/profile" className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full" />}>
+                <DropdownMenuItem onClick={() => router.push("/profile")}>
                   <User2 className="mr-2 h-4 w-4" />
                   Profile
                 </DropdownMenuItem>
-                <DropdownMenuItem render={<Link href="/system-configuration" className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full" />}>
+                <DropdownMenuItem onClick={() => router.push("/system-configuration")}>
                   <Settings className="mr-2 h-4 w-4" />
                   System Configuration
                 </DropdownMenuItem>
-                <DropdownMenuItem render={<Link href="/appearance" className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full" />}>
+                <DropdownMenuItem onClick={() => router.push("/appearance")}>
                   <Monitor className="mr-2 h-4 w-4" />
                   Appearance
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/about" className="group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-inset:pl-7 w-full" />}>
+                <DropdownMenuItem onClick={() => router.push("/about")}>
                   <Info className="mr-2 h-4 w-4" />
                   About ReForge
                 </DropdownMenuItem>

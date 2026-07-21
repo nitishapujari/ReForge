@@ -235,22 +235,22 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
                         if (finalParsed?.decision === 'accept') {
                           return (
                             <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-md">
-                              <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3"/> Verification Complete</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed">The answer was successfully verified against the retrieved sources and delivered.</p>
+                              <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3"/> {finalParsed.final_action || "Verification Complete"}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">{finalParsed.reason || "The answer was successfully verified against the retrieved sources and delivered."}</p>
                             </div>
                           )
                         } else if (finalParsed?.decision === 'rewrite' || finalParsed?.decision === 'escalate') {
                           return (
                             <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-md">
-                              <p className="text-xs font-bold text-yellow-700 dark:text-yellow-400 mb-1 flex items-center gap-1.5"><RotateCcw className="w-3 h-3"/> Verification Incomplete</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed">The critic detected missing information. ReForge automatically searched again using an improved query.</p>
+                              <p className="text-xs font-bold text-yellow-700 dark:text-yellow-400 mb-1 flex items-center gap-1.5"><RotateCcw className="w-3 h-3"/> {finalParsed.final_action || "Verification Incomplete"}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">{finalParsed.reason || "The critic detected missing information. ReForge automatically searched again using an improved query."}</p>
                             </div>
                           )
                         } else if (finalParsed?.decision === 'fail') {
                           return (
                             <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-md">
-                              <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1 flex items-center gap-1.5"><XCircle className="w-3 h-3"/> Verification Failed</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed">A sufficiently grounded answer could not be produced after multiple verification attempts.</p>
+                              <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1 flex items-center gap-1.5"><XCircle className="w-3 h-3"/> {finalParsed.final_action || "Verification Failed"}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">{finalParsed.reason || "A sufficiently grounded answer could not be produced after multiple verification attempts."}</p>
                             </div>
                           )
                         }

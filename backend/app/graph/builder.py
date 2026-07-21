@@ -129,7 +129,7 @@ def compile_graph():
     return compiled
 
 
-def get_initial_state(question: str, session_id: str, user_id: str, chat_history: list[dict] | None = None) -> GraphState:
+def get_initial_state(question: str, session_id: str, user_id: str, chat_history: list[dict] | None = None, document_ids: list[str] | None = None) -> GraphState:
     """
     Create the initial state for a graph invocation.
 
@@ -138,6 +138,7 @@ def get_initial_state(question: str, session_id: str, user_id: str, chat_history
         session_id: The chat session UUID.
         user_id: The user's UUID.
         chat_history: The recent conversation history.
+        document_ids: Optional list of document IDs to restrict retrieval to.
 
     Returns:
         A new GraphState dictionary.
@@ -147,6 +148,7 @@ def get_initial_state(question: str, session_id: str, user_id: str, chat_history
         "session_id": session_id,
         "user_id": user_id,
         "chat_history": chat_history or [],
+        "document_ids": document_ids,
         "retrieval_query": None,
         "rewritten_question": None,
         "retrieved_docs": [],
