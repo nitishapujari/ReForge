@@ -1,0 +1,494 @@
+<USER_REQUEST>
+Goal
+
+The **Verification Log** is no longer a developer debugging screen.
+
+Its purpose is to answer one simple question:
+
+> **"How did ReForge arrive at this answer?"**
+
+The experience should feel polished, trustworthy, and understandable for end users while still showcasing ReForge's self-healing verification pipeline.
+
+Users should never see raw backend variables such as:
+
+* `decision=accept`
+* `answer_len=629`
+* `query='...'`
+* raw JSON payloads
+* internal LangGraph state values
+
+Those belong to developers, not users.
+
+---
+
+# Overall Timeline
+
+The Verification Log should tell a simple story consisting of **three stages**.
+
+```
+🔍 Finding Relevant Information
+
+↓
+
+✍️ Generating Draft
+
+↓
+
+🛡️ Verifying Response
+```
+
+Do **not** expose internal workflow nodes like Routing Decision.
+
+The UI should explain the process, not the implementation.
+
+---
+
+# 1. Finding Relevant Information
+
+(Currently called Retrieval)
+
+Rename this section to:
+
+> **Finding Relevant Information**
+
+## Remove
+
+* Raw query text
+* query="..."
+* Context Retrieved: XX
+* Any variable=value output
+
+---
+
+## Backend
+
+Update the retrieval node so that it logs structured JSON containing:
+
+* top document names
+* top relevance score
+* total snippets combined
+
+Example payload:
+
+```json
+{
+  "documents": [
+    "DBMS_Notes.pdf",
+    "SQL_CheatSheet.pdf",
+    "Normalization.pdf"
+  ],
+  "snippet_count": 15,
+  "top_score": 0.88
+}
+```
+
+---
+
+## Frontend
+
+Display
+
+### Top Sources Found
+
+```
+📄 DBMS_Notes.pdf
+
+📄 SQL_CheatSheet.pdf
+
+📄 Normalization.pdf
+```
+
+---
+
+### Match Quality
+
+Instead of only
+
+```
+0.88
+```
+
+display
+
+```
+🟢 High Match
+
+0.88 relevance
+```
+
+Quality thresholds
+
+```
+>=0.75
+High Match
+
+0.50–0.74
+Medium Match
+
+<0.50
+Low Match
+```
+
+---
+
+Instead of
+
+```
+Retrieved 15 documents
+```
+
+show
+
+```
+15 source snippets combined
+```
+
+This better reflects what actually happened.
+
+---
+
+# 2. Generating Draft
+
+(Currently Generate Node)
+
+Rename section to
+
+> **Generating Draft**
+
+---
+
+## Remove
+
+```
+Draft Length
+
+answer_len=629
+```
+
+Completely.
+
+---
+
+## Backend
+
+Return structured JSON
+
+```json
+{
+  "generation_time": 1.42,
+  "preview": "The database normalization process eliminates..."
+}
+```
+
+---
+
+## Frontend
+
+Display
+
+### Draft Preview
+
+Show the first **2–3 lines** of the generated draft.
+
+Use lighter/italic styling to indicate this is the internal draft before verification.
+
+Do **not** cut exactly at 100 characters.
+
+Trim naturally.
+
+---
+
+### Generation Time
+
+Example
+
+```
+Generated in
+
+1.42 seconds
+```
+
+---
+
+# 3. Verifying Response
+
+(Currently Critic Node)
+
+Rename section to
+
+> **Verifying Response**
+
+---
+
+This section should remain the strongest part of the Verification Log.
+
+Preserve
+
+* Confidence Meter
+* Missing Information
+* Critic reasoning
+
+---
+
+Rename labels
+
+Instead of
+
+```
+Confidence
+```
+
+use
+
+```
+Grounding Confidence
+```
+
+---
+
+Instead of
+
+```
+Reasoning
+```
+
+use
+
+```
+Verification Summary
+```
+
+---
+
+Keep the Missing Information cards exactly as they are.
+
+They already communicate useful information.
+
+---
+
+# 4. Final Outcome
+
+Remove the standalone
+
+```
+Routing Decision
+```
+
+section completely.
+
+Do **not** show another separate node.
+
+The decision is simply the conclusion of verification.
+
+Instead, append a **Final Outcome** panel at the bottom of the **Verifying Response** block.
+
+---
+
+Accepted
+
+```
+✅ Verification Complete
+
+The answer was successfully verified against the retrieved sources and delivered.
+```
+
+---
+
+Retry
+
+```
+🔄 Verification Incomplete
+
+The critic detected missing information.
+
+ReForge automatically searched again using an improved query.
+```
+
+---
+
+Failure
+
+```
+❌ Verification Failed
+
+A sufficiently grounded answer could not be produced after multiple verification attempts.
+```
+
+---
+
+# 5. Terminology Updates
+
+Rename throughout the Verification Log.
+
+Current
+
+```
+Attempt 1
+```
+
+↓
+
+```
+Iteration 1
+```
+
+---
+
+Current
+
+```
+Searching Context
+```
+
+↓
+
+```
+Finding Relevant Information
+```
+
+---
+
+Current
+
+```
+Drafting Response
+```
+
+↓
+
+```
+Generating Draft
+```
+
+---
+
+Current
+
+```
+Verifying Accuracy
+```
+
+↓
+
+```
+Verifying Response
+```
+
+---
+
+Remove entirely
+
+```
+Routing Decision
+```
+
+---
+
+# 6. Overall Quality Badge
+
+At the end of the Verification Log display one overall quality assessment.
+
+Example
+
+```
+Overall Quality
+
+🟢 Highly Grounded
+```
+
+or
+
+```
+🟡 Partially Grounded
+```
+
+or
+
+```
+🔴 Low Confidence
+```
+
+This should summarize the verification outcome at a glance.
+
+---
+
+# 7. Processing Summary
+
+Add a compact summary card at the very bottom.
+
+Example
+
+```
+Summary
+
+✓ 15 source snippets searched
+
+✓ 3 documents contributed
+
+✓ Draft generated
+
+✓ Verification passed
+
+Total processing time
+
+2.7 seconds
+```
+
+This provides a satisfying conclusion to the workflow.
+
+---
+
+# 8. Technical Details (Collapsible)
+
+Developers may still need access to raw debugging information.
+
+Instead of displaying it by default, move all implementation details into a collapsed section.
+
+```
+▼ Technical Details
+```
+
+Inside it may contain
+
+* raw JSON
+* retry count
+* similarity scores
+* chunk IDs
+* timings
+* internal payloads
+* LangGraph metadata
+
+This section should remain collapsed by default.
+
+Regular users should never need to open it.
+
+---
+
+# Design Principles
+
+Throughout the Verification Log:
+
+* Never expose backend variable names.
+* Never expose raw JSON unless inside **Technical Details**.
+* Use human-friendly language instead of implementation terminology.
+* Keep the interface clean and confidence-inspiring.
+* The Verification Log should feel like a polished product feature, not a debugger.
+
+The final experience should explain **why the answer can be trusted**, rather than **how the code executed**.
+
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-07-21T00:26:04+05:30.
+
+The user's current state is as follows:
+Other open documents:
+- c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\frontend\src\app\layout.tsx (LANGUAGE_TSX)
+- c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\backend\app\models\schemas.py (LANGUAGE_PYTHON)
+- c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\backend\app\services\chat_history.py (LANGUAGE_PYTHON)
+- c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\backend\app\agents\rewrite.py (LANGUAGE_PYTHON)
+- c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\backend\app\agents\decision.py (LANGUAGE_PYTHON)
+Running terminal commands:
+-  .\venv\Scripts\activate
+ python -m uvicorn app.main:app --reload (in c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\backend, running for 14m57s)
+- npm run dev (in c:\Users\Nitisha Pujari\Documents\programming\dev\projects\ReForge\frontend, running for 14m44s)
+</ADDITIONAL_METADATA>

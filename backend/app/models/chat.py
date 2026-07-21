@@ -106,6 +106,11 @@ class ChatMessage(Base):
         nullable=True,
         doc="Execution trace JSON for assistant messages.",
     )
+    message_metadata = Column(
+        JSON,
+        nullable=True,
+        doc="Additional metadata such as sources.",
+    )
 
     # Relationship
     session = relationship("ChatSession", back_populates="messages")

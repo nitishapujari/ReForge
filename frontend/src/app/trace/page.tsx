@@ -15,8 +15,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import { 
   Activity, Clock, ChevronDown, ChevronRight, CheckCircle2, 
-  XCircle, RotateCcw, HelpCircle, Search, Bot, Scale, GitBranch, Edit3, MessageSquare,
-  FileText, Zap, BarChart3, Database
+  XCircle, RotateCcw, Search, Bot, Scale, GitBranch, Edit3, MessageSquare,
+  FileText, Zap, BarChart3, Database, ShieldCheck, ChevronUp, AlertCircle
 } from "lucide-react"
 
 // Types
@@ -59,65 +59,44 @@ const shortenId = (id: string) => {
   return id.split('-')[0]
 }
 
+
 // Node Component
-const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus: string }) => {
+const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: TraceEntry }) => {
   const [isExpanded, setIsExpanded] = useState(false)
   
-  const getIcon = () => {
-    switch(entry.node) {
-      case 'retrieve': return <Search className="w-4 h-4 text-blue-500" />
-      case 'generate': return <Bot className="w-4 h-4 text-purple-500" />
-      case 'critic': return <Scale className="w-4 h-4 text-orange-500" />
-      case 'decision': return <GitBranch className="w-4 h-4 text-gray-500" />
-      case 'rewrite': return <Edit3 className="w-4 h-4 text-indigo-500" />
-      default: return <Activity className="w-4 h-4" />
-    }
-  }
-
-  const getStatusIndicator = () => {
-    if (entry.decision === 'fail') return <span className="flex items-center text-xs text-red-600 bg-red-100 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3 mr-1"/> Failed</span>
-    if (entry.decision === 'rewrite') return <span className="flex items-center text-xs text-yellow-600 bg-yellow-100 px-2 py-0.5 rounded-full"><RotateCcw className="w-3 h-3 mr-1"/> Retry</span>
-    if (entry.decision === 'accept' || entry.node === 'generate') return <span className="flex items-center text-xs text-green-600 bg-green-100 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3 mr-1"/> Success</span>
-    return <span className="flex items-center text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3 mr-1"/> Done</span>
-  }
-
-  // Attempt to parse out confidence/grounded if present in output summary for Critic
   const tryParseJSON = (str: string) => {
     try {
       return JSON.parse(str)
     } catch {
+      if (str === "grounded=None, confidence=None") {
+        return { grounded: null, confidence: null, error: "Verification skipped (API unavailable)" }
+      }
       return null
     }
   }
 
+  const parsedInput = tryParseJSON(entry.input_summary)
   const parsedOutput = tryParseJSON(entry.output_summary)
 
   const getHumanReadableTitle = () => {
     switch(entry.node) {
-      case 'retrieve': return "Searching Context"
-      case 'generate': return "Drafting Response"
-      case 'critique': return "Verifying Accuracy"
+      case 'retrieve': return "Finding Relevant Information"
+      case 'generate': return "Generating Draft"
+      case 'critique': return "Verifying Response"
       case 'rewrite': return "Rewriting Search Query"
       case 'router': return "Initial Routing"
-      case 'decision': return "Routing Decision"
       default: return entry.node
     }
   }
 
-  const getHumanReadableDescription = () => {
-    if (entry.node === 'critique' && entry.decision === 'rewrite') return "The AI Critic rejected the draft for lacking grounded context. Triggering a retry."
-    if (entry.node === 'critique' && entry.decision === 'accept') return "The AI Critic verified that the draft is grounded."
-    if (entry.node === 'router' && entry.decision === 'bypass') return "General conversation detected. Bypassing document retrieval."
-    if (entry.node === 'router' && entry.decision === 'retrieve') return "Question requires external knowledge. Routing to RAG pipeline."
-    if (entry.node === 'decision') return "Determining next steps based on critic feedback."
-    if (entry.node === 'retrieve') {
-      const queryMatch = entry.input_summary.match(/query='(.*?)'/)
-      if (queryMatch) return `Searched documents for: "${queryMatch[1]}"`
-      return "Retrieving relevant information from documents."
+  const getIcon = () => {
+    switch(entry.node) {
+      case 'retrieve': return <Search className="w-4 h-4 text-blue-500" />
+      case 'generate': return <Edit3 className="w-4 h-4 text-purple-500" />
+      case 'critique': return <ShieldCheck className="w-4 h-4 text-green-600" />
+      case 'rewrite': return <RotateCcw className="w-4 h-4 text-orange-500" />
+      default: return <Activity className="w-4 h-4" />
     }
-    if (entry.node === 'rewrite') return "Reformulating the search query to find better information."
-    if (entry.node === 'generate') return "The AI formulated a draft response."
-    return "Processing step."
   }
 
   return (
@@ -142,16 +121,10 @@ const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus:
             </div>
             <div>
               <p className="font-semibold text-sm">{getHumanReadableTitle()}</p>
-              <p className="text-xs text-muted-foreground mt-0.5">{getHumanReadableDescription()}</p>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 mt-1.5 font-medium">
-                <span className="flex items-center"><Clock className="w-3 h-3 mr-1"/> {entry.execution_time_ms.toFixed(0)} ms</span>
-                <span>•</span>
-                <span>Attempt {entry.attempt}</span>
-              </div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {getStatusIndicator()}
+            <span className="flex items-center text-xs text-muted-foreground"><Clock className="w-3 h-3 mr-1"/> {entry.execution_time_ms.toFixed(0)} ms</span>
             {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
           </div>
         </div>
@@ -162,111 +135,148 @@ const TraceNode = ({ entry, attemptStatus }: { entry: TraceEntry, attemptStatus:
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               
-              {/* Parse and display friendly metrics based on node type */}
-              {entry.node === 'retrieve' && (
+              {/* RETRIEVAL NODE */}
+              {entry.node === 'retrieve' && parsedOutput && (
                 <>
-                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Search className="w-3 h-3"/> Search Query</p>
-                    <p className="font-medium text-foreground text-sm">{entry.input_summary.match(/query='(.*?)'/)?.[1] || "N/A"}</p>
+                  <div className="bg-muted/30 p-4 rounded-lg border border-border/50 md:col-span-2 space-y-3">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><FileText className="w-3 h-3"/> Top Sources Found</p>
+                    {parsedOutput.documents && parsedOutput.documents.length > 0 ? (
+                      <ul className="space-y-2">
+                        {parsedOutput.documents.map((doc: any, i: number) => (
+                          <li key={i} className="flex items-center gap-2 text-sm font-medium"><FileText className="w-4 h-4 text-muted-foreground"/> {typeof doc === 'string' ? doc : (doc.filename || 'Unknown Document')}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground italic">No relevant documents found in the database.</p>
+                    )}
                   </div>
-                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Database className="w-3 h-3"/> Context Snippets Retrieved</p>
-                    <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/found (\d+) docs/)?.[1] || "0"}</p>
+
+                  <div className="bg-muted/30 p-4 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Database className="w-3 h-3"/> Snippets Combined</p>
+                    <p className="font-medium text-foreground text-sm">{parsedOutput.snippet_count || 0} source snippets combined</p>
                   </div>
-                  {entry.output_summary.match(/best_score=([0-9.]+)/) && (
-                    <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><BarChart3 className="w-3 h-3"/> Top Relevance Score</p>
-                      <div className="flex items-center gap-2">
-                        <div className="h-2 w-full max-w-xs bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-primary" style={{ width: `${parseFloat(entry.output_summary.match(/best_score=([0-9.]+)/)?.[1] || "0") * 100}%` }}></div>
-                        </div>
-                        <span className="text-xs font-semibold">{parseFloat(entry.output_summary.match(/best_score=([0-9.]+)/)?.[1] || "0").toFixed(2)}</span>
-                      </div>
+                  
+                  <div className="bg-muted/30 p-4 rounded-lg border border-border/50">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><BarChart3 className="w-3 h-3"/> Match Quality</p>
+                    <div className="flex items-center justify-between">
+                      {parsedOutput.top_score >= 0.75 ? (
+                         <span className="text-xs font-bold text-green-600 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1">🟢 High Match</span>
+                      ) : parsedOutput.top_score >= 0.50 ? (
+                         <span className="text-xs font-bold text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded flex items-center gap-1">🟡 Medium Match</span>
+                      ) : (
+                         <span className="text-xs font-bold text-red-600 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1">🔴 Low Match</span>
+                      )}
+                      <span className="text-xs font-semibold text-muted-foreground">{parsedOutput.top_score} relevance</span>
                     </div>
-                  )}
+                  </div>
                 </>
               )}
 
-              {entry.node === 'generate' && (
+              {/* GENERATE NODE */}
+              {entry.node === 'generate' && parsedOutput && (
                 <>
-                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><FileText className="w-3 h-3"/> Context Documents Used</p>
-                    <p className="font-medium text-foreground text-sm">{entry.input_summary.match(/context_docs=(\d+)/)?.[1] || "0"}</p>
+                  <div className="bg-muted/30 p-4 rounded-lg border border-border/50 md:col-span-2">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Edit3 className="w-3 h-3"/> Draft Preview</p>
+                    <p className="italic text-muted-foreground text-sm leading-relaxed border-l-2 border-primary/30 pl-3 py-1">{parsedOutput.preview}</p>
                   </div>
-                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Edit3 className="w-3 h-3"/> Draft Length</p>
-                    <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/answer_len=(\d+)/)?.[1] || "0"} characters</p>
+                  <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Clock className="w-3 h-3"/> Generated in</p>
+                    <p className="font-medium text-foreground text-sm">{parsedOutput.generation_time} seconds</p>
                   </div>
-                  {entry.output_summary.match(/sources=(\d+)/) && (
-                    <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3"/> Sources Cited</p>
-                      <p className="font-medium text-foreground text-sm">{entry.output_summary.match(/sources=(\d+)/)?.[1]}</p>
-                    </div>
-                  )}
                 </>
               )}
 
+              {/* CRITIQUE NODE */}
               {entry.node === 'critique' && parsedOutput && (
                 <div className="bg-muted/30 p-4 rounded-lg border border-border/50 md:col-span-2 space-y-3">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5"><Scale className="w-3 h-3"/> Evaluation Results</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Scale className="w-3 h-3"/> Verification Summary</p>
                   
                   {parsedOutput.grounded !== undefined && (
                     <div className="flex items-center justify-between p-2.5 bg-background rounded border shadow-sm">
                       <span className="text-sm font-medium">Factually Grounded</span>
-                      {parsedOutput.grounded ? 
-                        <span className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> PASS</span> : 
+                      {parsedOutput.grounded === null ? (
+                        <span className="text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-500/10 px-2 py-1 rounded flex items-center gap-1"><Clock className="w-3 h-3"/> SKIPPED</span>
+                      ) : parsedOutput.grounded ? (
+                        <span className="text-xs font-bold text-green-600 dark:text-green-400 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1"><CheckCircle2 className="w-3 h-3"/> PASS</span>
+                      ) : (
                         <span className="text-xs font-bold text-red-600 dark:text-red-400 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1"><XCircle className="w-3 h-3"/> FAIL</span>
-                      }
+                      )}
                     </div>
                   )}
                   
-                  {parsedOutput.confidence && (
+                  {parsedOutput.confidence !== undefined && parsedOutput.confidence !== null && (
                     <div className="flex items-center justify-between p-2.5 bg-background rounded border shadow-sm">
-                      <span className="text-sm font-medium">AI Confidence</span>
+                      <span className="text-sm font-medium">Grounding Confidence</span>
                       <span className="text-sm font-bold text-primary">{parsedOutput.confidence}</span>
                     </div>
                   )}
 
-                  {parsedOutput.missing_information && (
+                  {parsedOutput.error && (
+                    <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-md">
+                      <p className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 mb-1">Notice</p>
+                      <p className="text-xs text-foreground/80 leading-relaxed">{parsedOutput.error}</p>
+                    </div>
+                  )}
+
+                  {parsedOutput.missing_information && parsedOutput.missing_information.length > 0 && (
                     <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-md">
-                      <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1">Missing Information Detected</p>
-                      <p className="text-xs text-foreground/80 leading-relaxed">{parsedOutput.missing_information}</p>
+                      <p className="text-xs font-semibold text-red-600 dark:text-red-400 mb-1 flex items-center gap-1.5"><AlertCircle className="w-3 h-3" /> Missing Information Detected</p>
+                      <ul className="text-xs text-foreground/80 leading-relaxed list-disc list-inside">
+                        {parsedOutput.missing_information.map((item: string, i: number) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* FINAL OUTCOME ATTACHED TO CRITIQUE */}
+                  {finalOutcome && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      {(() => {
+                        const finalParsed = tryParseJSON(finalOutcome.output_summary)
+                        if (finalParsed?.decision === 'accept') {
+                          return (
+                            <div className="p-3 bg-green-500/5 border border-green-500/20 rounded-md">
+                              <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-1 flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3"/> Verification Complete</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">The answer was successfully verified against the retrieved sources and delivered.</p>
+                            </div>
+                          )
+                        } else if (finalParsed?.decision === 'rewrite' || finalParsed?.decision === 'escalate') {
+                          return (
+                            <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-md">
+                              <p className="text-xs font-bold text-yellow-700 dark:text-yellow-400 mb-1 flex items-center gap-1.5"><RotateCcw className="w-3 h-3"/> Verification Incomplete</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">The critic detected missing information. ReForge automatically searched again using an improved query.</p>
+                            </div>
+                          )
+                        } else if (finalParsed?.decision === 'fail') {
+                          return (
+                            <div className="p-3 bg-red-500/5 border border-red-500/20 rounded-md">
+                              <p className="text-xs font-bold text-red-700 dark:text-red-400 mb-1 flex items-center gap-1.5"><XCircle className="w-3 h-3"/> Verification Failed</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">A sufficiently grounded answer could not be produced after multiple verification attempts.</p>
+                            </div>
+                          )
+                        }
+                        return null
+                      })()}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* General Fallback for other nodes or unparsed data */}
-              {entry.node !== 'retrieve' && entry.node !== 'generate' && (!parsedOutput || entry.node !== 'critique') && (
-                <div className="bg-muted/30 p-3 rounded-lg border border-border/50 md:col-span-2">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Zap className="w-3 h-3"/> Action Summary</p>
-                  <p className="text-sm text-foreground/90">{entry.output_summary.replace(/[{}"']+/g, ' ')}</p>
-                </div>
-              )}
-            </div>
-
-            {/* View Raw Technical Data Toggle (Optional for power users) */}
-            <details className="mt-4 group/raw">
-              <summary className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer list-none flex items-center gap-1 hover:text-primary transition-colors w-max">
-                <ChevronRight className="w-3 h-3 group-open/raw:rotate-90 transition-transform"/> View Raw Technical Data
-              </summary>
-              <div className="mt-3 p-3 bg-black/40 rounded-lg border border-border/50 space-y-3 font-mono text-[10px] text-muted-foreground">
-                <div>
-                  <span className="text-primary/70 block mb-1">Input Context:</span>
-                  <div className="break-all whitespace-pre-wrap bg-black/40 p-2 rounded">{entry.input_summary}</div>
-                </div>
-                <div>
-                  <span className="text-primary/70 block mb-1">Output Payload:</span>
-                  <div className="break-all whitespace-pre-wrap bg-black/40 p-2 rounded">{entry.output_summary}</div>
-                </div>
-                {entry.decision && (
-                  <div>
-                    <span className="text-primary/70 block mb-1">Branch Decision:</span>
-                    <div className="bg-black/40 p-2 rounded">{entry.decision}</div>
+              {/* TECHNICAL DETAILS COLLAPSIBLE */}
+              <div className="md:col-span-2 mt-4 pt-2 border-t">
+                <details className="group">
+                  <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground list-none">
+                    <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                    Technical Details
+                  </summary>
+                  <div className="mt-3 p-3 bg-muted/20 border rounded text-xs font-mono text-muted-foreground overflow-x-auto">
+                    <div className="mb-2"><strong>Node:</strong> {entry.node}</div>
+                    <div className="mb-2"><strong>Input Payload:</strong><br/>{entry.input_summary}</div>
+                    <div><strong>Output Payload:</strong><br/>{entry.output_summary}</div>
                   </div>
-                )}
+                </details>
               </div>
-            </details>
+
+            </div>
           </div>
         )}
       </div>
@@ -468,47 +478,120 @@ export default function TracePage() {
                       </div>
                     </AccordionTrigger>
                     
+                    
                     <AccordionContent className="px-5 pb-5 pt-2 border-t bg-muted/5">
                       <div className="mt-4 pl-2">
                         {groupTracesByAttempt(messageTrace.trace_data).map(([attempt, entries], attemptIdx, arr) => {
-                          // Determine status of attempt
-                          const lastEntry = entries[entries.length - 1]
+                          
+                          // Filter out the internal nodes from standard rendering
+                          const displayEntries = entries.filter(e => !['decision', 'router', 'rewrite'].includes(e.node))
+                          const decisionEntry = entries.find(e => e.node === 'decision')
+
+                          // Determine overall quality for the attempt based on the final decision
                           let badgeText = "Accepted"
                           let badgeClass = "bg-green-100 text-green-700 border-green-200"
                           
-                          if (lastEntry.decision === 'rewrite') {
-                            badgeText = "Retry"
-                            badgeClass = "bg-yellow-100 text-yellow-700 border-yellow-200"
-                          } else if (lastEntry.decision === 'fail') {
-                            badgeText = "Failed"
-                            badgeClass = "bg-red-100 text-red-700 border-red-200"
+                          if (decisionEntry) {
+                            try {
+                              const parsedDecision = JSON.parse(decisionEntry.output_summary)
+                              if (parsedDecision.decision === 'rewrite' || parsedDecision.decision === 'escalate') {
+                                badgeText = "Retry Needed"
+                                badgeClass = "bg-yellow-100 text-yellow-700 border-yellow-200"
+                              } else if (parsedDecision.decision === 'fail') {
+                                badgeText = "Failed"
+                                badgeClass = "bg-red-100 text-red-700 border-red-200"
+                              }
+                            } catch {
+                              // Legacy
+                              if (decisionEntry.output_summary.includes("fail")) {
+                                badgeText = "Failed"
+                                badgeClass = "bg-red-100 text-red-700 border-red-200"
+                              }
+                            }
                           }
 
                           return (
                             <div key={attempt} className="mb-6 relative">
                               {/* Attempt Header */}
                               <div className="flex items-center gap-3 mb-4 sticky top-0 bg-muted/5 py-2 z-20">
-                                <h4 className="font-semibold text-sm">Attempt {attempt}</h4>
+                                <h4 className="font-semibold text-sm">Iteration {attempt}</h4>
                                 <Badge variant="outline" className={`text-xs ${badgeClass}`}>
                                   {badgeText}
                                 </Badge>
                               </div>
                               
-                              {/* Nodes in this attempt */}
+                              {/* Nodes in this iteration */}
                               <div className="ml-2">
-                                {entries.map((entry, i) => (
+                                {displayEntries.map((entry, i) => (
                                   <TraceNode 
                                     key={i} 
                                     entry={entry} 
-                                    attemptStatus={badgeText}
+                                    finalOutcome={entry.node === 'critique' ? decisionEntry : undefined}
                                   />
                                 ))}
                               </div>
                             </div>
                           )
                         })}
+
+                        {/* Summary & Quality Badge */}
+                        <div className="mt-8 pt-6 border-t border-border">
+                          {(() => {
+                            const lastAttemptGroup = groupTracesByAttempt(messageTrace.trace_data).pop()
+                            if (!lastAttemptGroup) return null
+                            const lastEntries = lastAttemptGroup[1]
+                            const finalDecision = lastEntries.find(e => e.node === 'decision')
+                            const retrievalEntry = lastEntries.find(e => e.node === 'retrieve')
+                            
+                            let qualityBadge = <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-bold text-sm">🟢 Highly Grounded</span>
+                            if (finalDecision) {
+                              try {
+                                const parsed = JSON.parse(finalDecision.output_summary)
+                                if (parsed.decision === 'fail') qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm">🔴 Low Confidence</span>
+                              } catch {
+                                if (finalDecision.output_summary.includes("fail")) qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm">🔴 Low Confidence</span>
+                              }
+                            }
+
+                            let docsSearched = 0
+                            let docsFound = 0
+                            if (retrievalEntry) {
+                                try {
+                                    const parsed = JSON.parse(retrievalEntry.output_summary)
+                                    docsSearched = parsed.snippet_count || 0
+                                    docsFound = (parsed.documents && parsed.documents.length) || 0
+                                } catch {}
+                            }
+                            
+                            const totalTime = lastEntries.reduce((acc, curr) => acc + curr.execution_time_ms, 0)
+
+                            return (
+                              <div className="space-y-6">
+                                <div>
+                                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Overall Quality</h4>
+                                  {qualityBadge}
+                                </div>
+                                
+                                <div className="bg-card border rounded-lg p-4 shadow-sm max-w-sm">
+                                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Summary</h4>
+                                  <ul className="space-y-2 text-sm">
+                                    <li className="flex justify-between"><span>✓ {docsSearched} source snippets searched</span></li>
+                                    <li className="flex justify-between"><span>✓ {docsFound} documents contributed</span></li>
+                                    <li className="flex justify-between"><span>✓ Draft generated</span></li>
+                                    <li className="flex justify-between"><span>✓ Verification completed</span></li>
+                                  </ul>
+                                  <div className="mt-4 pt-3 border-t flex justify-between text-xs font-medium">
+                                    <span className="text-muted-foreground">Total processing time</span>
+                                    <span>{(totalTime / 1000).toFixed(1)} seconds</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })()}
+                        </div>
                       </div>
                     </AccordionContent>
+
                   </AccordionItem>
                 ))}
               </Accordion>

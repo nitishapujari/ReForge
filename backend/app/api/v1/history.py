@@ -52,6 +52,106 @@ async def list_sessions(
     return await chat_history.list_sessions(db, limit=limit, offset=offset)
 
 
+import json
+
+def get_message_metadata_with_fallback(msg) -> dict:
+    meta = msg.message_metadata or {}
+    if meta and "sources" in meta and meta["sources"]:
+        return meta
+        
+    trace_data = msg.trace_data
+    if isinstance(trace_data, str):
+        try:
+            trace_data = json.loads(trace_data)
+        except Exception:
+            pass
+            
+    if not trace_data or not isinstance(trace_data, list):
+        return meta
+        
+    new_meta = dict(meta) if meta else {}
+    sources = []
+    
+    # 1. Try from generate node's retrieval_diagnostics
+    for step in trace_data:
+        if isinstance(step, dict) and step.get("node") == "generate":
+            diagnostics = step.get("retrieval_diagnostics") or []
+            for diag in diagnostics:
+                if diag.get("included") and diag.get("filename"):
+                    sources.append({
+                        "filename": diag["filename"],
+                        "document_score": diag.get("score", 0.0),
+                        "chunks": [
+                            {
+                                "chunk_number": 1,
+                                "page_number": 1,
+                                "content_preview": "Snippet text not available in history log.",
+                                "similarity_score": diag.get("score", 0.0)
+                            }
+                        ]
+                    })
+            if sources:
+                break
+                
+    # 2. Try from retrieve node
+    if not sources:
+        for step in trace_data:
+            if isinstance(step, dict) and step.get("node") == "retrieve":
+                output_summary = step.get("output_summary")
+                if output_summary:
+                    try:
+                        if isinstance(output_summary, str):
+                            out_dict = json.loads(output_summary)
+                        else:
+                            out_dict = output_summary
+                        
+                        docs = out_dict.get("documents") or []
+                        for doc in docs:
+                            sources.append({
+                                "filename": doc,
+                                "document_score": out_dict.get("top_score", 0.0),
+                                "chunks": [
+                                    {
+                                        "chunk_number": 1,
+                                        "page_number": 1,
+                                        "content_preview": "Snippet text not available in history log.",
+                                        "similarity_score": out_dict.get("top_score", 0.0)
+                                    }
+                                ]
+                            })
+                    except Exception:
+                        pass
+                if sources:
+                    break
+                    
+    if sources:
+        new_meta["sources"] = sources
+        if "response_type" not in new_meta:
+            new_meta["response_type"] = "GROUNDED"
+            
+    # Check critique node for grounded/confidence
+    for step in trace_data:
+        if isinstance(step, dict) and step.get("node") == "critique":
+            output_summary = step.get("output_summary")
+            if output_summary:
+                try:
+                    if isinstance(output_summary, str):
+                        out_dict = json.loads(output_summary)
+                    else:
+                        out_dict = output_summary
+                    
+                    if "grounded" in out_dict:
+                        new_meta["grounded"] = out_dict["grounded"]
+                    if "confidence" in out_dict:
+                        new_meta["confidence"] = out_dict["confidence"]
+                    if "verification_status" not in new_meta:
+                        new_meta["verification_status"] = "VERIFIED"
+                except Exception:
+                    pass
+                    
+    return new_meta
+
+
 @router.get(
     "/{session_id}",
     response_model=SessionDetailResponse,
@@ -84,7 +184,14 @@ async def get_session(
         "created_at": session.created_at,
         "updated_at": session.updated_at,
         "messages": [
-            MessageResponse.model_validate(msg) for msg in session.messages
+            MessageResponse(
+                id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                timestamp=msg.timestamp,
+                metadata=get_message_metadata_with_fallback(msg)
+            )
+            for msg in session.messages
         ],
     }
 

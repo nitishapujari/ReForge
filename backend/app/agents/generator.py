@@ -38,6 +38,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     stream_callback = None
     if config and "configurable" in config:
         stream_callback = config["configurable"].get("stream_callback")
+        
+    if stream_callback:
+        stream_callback({"type": "status", "message": "📝 Drafting response...", "status": "info"})
 
     start_time = time.perf_counter()
 
@@ -179,19 +182,11 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         diagnostics.append(diag)
 
     # 5. Cap to MAX_CONTEXT_CHUNKS and build context arrays
-    relevant_docs = []
-    relevant_metas = []
-    relevant_scores = []
-    grouped_sources = []
+    context_parts = []
+    flat_sources = []
     
     total_chunks = 0
     for doc_entry in ranked_docs:
-        source_doc = SourceDocument(
-            filename=doc_entry["filename"],
-            document_score=doc_entry["document_score"],
-            chunks=[]
-        )
-        
         # Sort chunks internally descending by score
         doc_entry["chunks"].sort(key=lambda x: x["score"], reverse=True)
         
@@ -199,28 +194,33 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             if total_chunks >= MAX_CONTEXT_CHUNKS:
                 break
             
-            relevant_docs.append(c["doc"])
-            relevant_metas.append(c["meta"])
-            relevant_scores.append(c["score"])
             total_chunks += 1
             
             preview = c["doc"][:200] + "..." if len(c["doc"]) > 200 else c["doc"]
-            source_doc.chunks.append(
-                ChunkPreview(
-                    chunk_number=c["meta"].get("chunk_number"),
-                    page_number=c["meta"].get("page_number"),
-                    content_preview=preview,
-                    similarity_score=c["score"]
-                )
+            source_doc = SourceDocument(
+                filename=doc_entry["filename"],
+                document_score=c["score"],
+                chunks=[
+                    ChunkPreview(
+                        chunk_number=c["meta"].get("chunk_number"),
+                        page_number=c["meta"].get("page_number"),
+                        content_preview=preview,
+                        similarity_score=c["score"]
+                    )
+                ]
             )
-            
-        if source_doc.chunks:
-            grouped_sources.append(source_doc)
+            flat_sources.append(source_doc)
+            source_idx = len(flat_sources)
+            context_parts.append(
+                f"[Source {source_idx}: {doc_entry['filename']}]\n{c['doc']}"
+            )
 
         if total_chunks >= MAX_CONTEXT_CHUNKS:
             break
 
-    if not relevant_docs:
+    grouped_sources = flat_sources
+
+    if not grouped_sources:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
             "No docs passed filters (best=%.2f, absolute=%.2f) — fallback",
@@ -269,14 +269,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             "trace": state.get("trace", []) + [trace_entry],
         }
 
-    # Build context string
-    context_parts = []
-    for i, (doc, meta) in enumerate(zip(relevant_docs, relevant_metas), start=1):
-        source_label = meta.get("filename", "unknown")
-        page = meta.get("page_number", "?")
-        context_parts.append(
-            f"[Source {i}: {source_label}, Page {page}]\n{doc}"
-        )
+    # context_parts is already built above alongside grouped_sources
     context = "\n\n---\n\n".join(context_parts)
 
     # Build prompt and call LLM
@@ -292,8 +285,8 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     logger.info(
         "Generating answer: question='%s', context_docs=%d, best_score=%.4f",
         question[:80],
-        len(relevant_docs),
-        relevant_scores[0],
+        len(grouped_sources),
+        grouped_sources[0].document_score,
     )
 
     if stream_callback:
@@ -325,11 +318,15 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         elapsed_ms,
     )
 
+    import json
     trace_entry = TraceEntry(
         node="generate",
         execution_time_ms=round(elapsed_ms, 2),
-        input_summary=f"question='{question[:60]}', context_docs={len(relevant_docs)}",
-        output_summary=f"answer_len={len(answer)}, sources={len(sources)}",
+        input_summary=json.dumps({"question": question, "context_docs": len(grouped_sources)}),
+        output_summary=json.dumps({
+            "generation_time": round(elapsed_ms / 1000.0, 2),
+            "preview": answer[:200].strip() + ("..." if len(answer) > 200 else "")
+        }),
         attempt=attempt,
         decision=None,
         retrieval_diagnostics=diagnostics,

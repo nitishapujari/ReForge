@@ -14,7 +14,10 @@ from typing import Any
 
 from google import genai
 from google.genai import types
-import groq
+try:
+    import groq
+except ImportError:
+    groq = None
 
 from app.constants import DEFAULT_TEMPERATURE, MAX_OUTPUT_TOKENS
 from app.utils.logger import get_logger
@@ -25,7 +28,7 @@ logger = get_logger(__name__)
 _provider: str = "gemini"
 _gemini_client: genai.Client | None = None
 _gemini_model: str = ""
-_groq_client: groq.Groq | None = None
+_groq_client: Any = None
 _groq_model: str = ""
 
 

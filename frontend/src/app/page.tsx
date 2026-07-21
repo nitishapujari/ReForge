@@ -18,6 +18,11 @@ import {
 import { useUser } from "@/contexts/user-context"
 import { Badge } from "@/components/ui/badge"
 
+const shortenId = (id: string) => {
+  if (!id) return ""
+  return id.split('-')[0]
+}
+
 function FloatingOrbs() {
   const [mounted, setMounted] = useState(false)
   const [orbs, setOrbs] = useState<any[]>([])
@@ -444,15 +449,17 @@ function PersonalizedDashboard() {
                   <ul className="space-y-4">
                     {recentSessions.map((session, idx) => (
                       <li key={session.id || idx}>
-                        <Link href={`/chat?session=${session.id}`} className="flex items-center gap-3 group">
-                          <div className="w-8 h-8 rounded bg-secondary flex items-center justify-center shrink-0 group-hover:bg-secondary/80 transition-colors">
-                            <MessageSquare className="w-4 h-4 text-secondary-foreground" />
-                          </div>
-                          <div className="overflow-hidden">
-                            <p className="text-sm font-medium truncate group-hover:text-primary transition-colors" title={session.title}>{session.title || "New Chat"}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(session.updated_at || session.created_at).toLocaleDateString()}
-                            </p>
+                        <Link href={`/chat?session=${session.id}`} className="block group">
+                          <div className="flex items-start gap-4">
+                            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                              <MessageSquare className="w-5 h-5 text-primary" />
+                            </div>
+                            <div className="space-y-1">
+                              <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate" title={session.title}>{session.title || "New Chat"}</p>
+                              <p className="text-sm text-muted-foreground">
+                                ID: {shortenId(session.id)} • {session.message_count} messages
+                              </p>
+                            </div>
                           </div>
                         </Link>
                       </li>

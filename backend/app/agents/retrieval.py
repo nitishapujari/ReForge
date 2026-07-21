@@ -14,6 +14,7 @@ import re
 
 from app.graph.state import GraphState, TraceEntry
 from app.services import retriever, llm
+from langchain_core.runnables import RunnableConfig
 from app.services.vectorstore import get_collection
 from app.prompts import NO_DOCUMENTS_RESPONSE, CONDENSE_SYSTEM_PROMPT, CONDENSE_USER_PROMPT
 from app.utils.logger import get_logger
@@ -54,7 +55,7 @@ def is_ambiguous(question: str) -> bool:
     return False
 
 
-def retrieve_node(state: GraphState) -> dict:
+def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
     """
     Retrieval node — fetches relevant documents from the vector store.
 
@@ -63,12 +64,17 @@ def retrieve_node(state: GraphState) -> dict:
 
     Args:
         state: Current graph state.
+        config: Runnable config.
 
     Returns:
         Dict of state updates: retrieved_docs, retrieved_metadatas,
         similarity_scores, attempts (incremented), and trace entry.
     """
     start_time = time.perf_counter()
+
+    stream_callback = config["configurable"].get("stream_callback") if config and "configurable" in config else None
+    if stream_callback:
+        stream_callback({"type": "status", "message": "🔍 Searching documents...", "status": "info"})
 
     # Determine query: rewritten (loop) -> retrieval_query (condensed) -> original
     query = state.get("rewritten_question")
@@ -115,11 +121,16 @@ def retrieve_node(state: GraphState) -> dict:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info("No documents in collection — skipping retrieval")
 
+        import json
         trace_entry = TraceEntry(
             node="retrieve",
             execution_time_ms=round(elapsed_ms, 2),
-            input_summary=f"query='{query[:60]}'",
-            output_summary="no documents in collection",
+            input_summary=json.dumps({"query": query}),
+            output_summary=json.dumps({
+                "documents": [],
+                "snippet_count": 0,
+                "top_score": 0.0
+            }),
             attempt=attempt,
             decision=None,
         )
@@ -153,11 +164,29 @@ def retrieve_node(state: GraphState) -> dict:
         elapsed_ms,
     )
 
+    import json
+    # Get top 3 unique document names
+    seen_docs = set()
+    top_docs = []
+    for meta in metas:
+        filename = meta.get("filename", "Unknown Document")
+        if filename not in seen_docs:
+            seen_docs.add(filename)
+            top_docs.append(filename)
+            if len(top_docs) >= 3:
+                break
+
+    output_payload = {
+        "documents": top_docs,
+        "snippet_count": len(docs),
+        "top_score": round(best_score, 2)
+    }
+
     trace_entry = TraceEntry(
         node="retrieve",
         execution_time_ms=round(elapsed_ms, 2),
-        input_summary=f"query='{query[:60]}', top_k={top_k}",
-        output_summary=f"found {len(docs)} docs, best_score={best_score:.4f}",
+        input_summary=json.dumps({"query": query, "top_k": top_k}),
+        output_summary=json.dumps(output_payload),
         attempt=attempt,
         decision=None,
     )

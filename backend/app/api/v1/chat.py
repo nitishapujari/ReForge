@@ -3,6 +3,7 @@ ReForge — Chat API Routes.
 
 POST /chat — Accept a user question, run retrieval + generation,
 save to chat history, and return the grounded answer with sources.
+GET /chat/{session_id}/suggestions — Provide follow-up suggestions for a session.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -130,7 +131,14 @@ async def chat(
             session_id=session_id,
             role="assistant",
             content=response_text,
-            trace_data=[trace_entry.model_dump()]
+            trace_data=[trace_entry.model_dump()],
+            metadata={
+                "sources": [],
+                "response_type": "CONVERSATION",
+                "verification_status": "VERIFIED",
+                "grounded": True,
+                "confidence": 1.0,
+            }
         )
         await db.commit()
         
@@ -192,6 +200,14 @@ async def chat(
         role="assistant",
         content=final_answer,
         trace_data=trace_data,
+        metadata={
+            "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in sources],
+            "response_type": response_type,
+            "verification_status": verification_status,
+            "grounded": grounded,
+            "confidence": confidence,
+            "attempts": attempts,
+        }
     )
 
     logger.info(
@@ -313,7 +329,14 @@ async def chat_stream(
                     session_id=session_id,
                     role="assistant",
                     content=response_text,
-                    trace_data=[trace_entry.model_dump()]
+                    trace_data=[trace_entry.model_dump()],
+                    metadata={
+                        "sources": [],
+                        "response_type": "CONVERSATION",
+                        "verification_status": "VERIFIED",
+                        "grounded": True,
+                        "confidence": 1.0,
+                    }
                 )
                 await db.commit()
                 
@@ -374,6 +397,10 @@ async def chat_stream(
                     # Emit a token SSE
                     yield f"data: {json.dumps(item)}\n\n"
                     
+                elif item["type"] == "status":
+                    # Emit a status SSE
+                    yield f"data: {json.dumps(item)}\n\n"
+                    
                 elif item["type"] == "error":
                     # Emit an error SSE and break
                     yield f"data: {json.dumps(item)}\n\n"
@@ -410,6 +437,14 @@ async def chat_stream(
                         role="assistant",
                         content=final_answer,
                         trace_data=trace_data,
+                        metadata={
+                            "sources": [s.model_dump() if hasattr(s, "model_dump") else s for s in sources],
+                            "response_type": response_type,
+                            "verification_status": verification_status,
+                            "grounded": grounded,
+                            "confidence": confidence,
+                            "attempts": attempts,
+                        }
                     )
                     
                     # Flush and commit the message to DB immediately
@@ -453,5 +488,123 @@ async def chat_stream(
             # Explicitly close the db session to prevent SAWarning during TestClient teardown
             await db.close()
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "Content-Encoding": "none"
+        }
+    )
+
+@router.get("/initial_suggestions")
+async def get_initial_suggestions(
+    db: AsyncSession = Depends(get_db_session)
+):
+    """
+    Generate 4 starter questions based on recently uploaded documents.
+    """
+    from sqlalchemy import select
+    from app.models.document import Document
+    from app.services import llm
+    import json
+    
+    # Fallback/default generic questions
+    default_suggestions = [
+        "What can you help me with?",
+        "How do I upload my documents?",
+        "Can you summarize my notes?",
+        "What topics are covered in my files?"
+    ]
+    
+    try:
+        # Fetch up to 3 recently processed documents
+        stmt = select(Document).where(Document.status == "completed").order_by(Document.created_at.desc()).limit(3)
+        result = await db.execute(stmt)
+        docs = result.scalars().all()
+        
+        if not docs:
+            return {"suggestions": default_suggestions}
+            
+        filenames = [doc.filename for doc in docs]
+        filenames_str = ", ".join(filenames)
+        
+        prompt = f"""The user has uploaded the following documents to their knowledge base:
+{filenames_str}
+
+Generate 4 short, distinct starter questions the user could ask you about these documents.
+Make the questions sound natural. Do not directly quote the filenames if possible, instead ask about their likely topics (e.g. if the file is 'C++ Basics.pdf', ask 'What are the main concepts in C++?').
+Return ONLY a JSON array of exactly 4 strings. Do not use markdown blocks.
+"""
+        
+        try:
+            response = llm.invoke(prompt).strip()
+            if response.startswith("```json"):
+                response = response[7:-3].strip()
+            elif response.startswith("```"):
+                response = response[3:-3].strip()
+                
+            suggestions = json.loads(response)
+            if isinstance(suggestions, list) and len(suggestions) > 0:
+                # Ensure we have exactly 4 by filling with defaults if short, or slicing if long
+                final_suggestions = suggestions[:4]
+                while len(final_suggestions) < 4:
+                    final_suggestions.append(default_suggestions[len(final_suggestions)])
+                return {"suggestions": final_suggestions}
+        except Exception as e:
+            logger.warning(f"Failed to generate dynamic suggestions (maybe quota limit): {e}")
+            
+        # Fallback to templated suggestions if LLM fails
+        templates = [
+            f"Can you summarize {filenames[0]}?",
+            f"What are the key points in {filenames[0]}?",
+            f"Explain the main concepts in {filenames[-1] if len(filenames) > 1 else filenames[0]}",
+            "Can you find any specific dates or names in my files?"
+        ]
+        return {"suggestions": templates}
+        
+    except Exception as e:
+        logger.error(f"Error fetching initial suggestions: {e}")
+        return {"suggestions": default_suggestions}
+
+
+@router.get("/{session_id}/suggestions")
+async def get_chat_suggestions(
+    session_id: str,
+    db: AsyncSession = Depends(get_db_session)
+):
+    """
+    Generate 3 smart follow-up questions based on the chat history.
+    """
+    from app.services import llm
+    
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=4)
+    if not chat_history_data or len(chat_history_data) == 0:
+        return {"suggestions": []}
+        
+    history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history_data])
+    
+    prompt = f"""Based on the following conversation, suggest 3 short, relevant follow-up questions the user might ask next.
+Return ONLY a JSON array of strings. Do not use markdown blocks.
+
+Conversation:
+{history_str}
+"""
+    try:
+        response = llm.invoke(prompt).strip()
+        if response.startswith("```json"):
+            response = response[7:-3].strip()
+        elif response.startswith("```"):
+            response = response[3:-3].strip()
+            
+        import json
+        suggestions = json.loads(response)
+        if isinstance(suggestions, list):
+            return {"suggestions": suggestions[:3]}
+    except Exception as e:
+        logger.error(f"Failed to generate suggestions: {e}")
+        
+    return {"suggestions": []}
 

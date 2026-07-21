@@ -119,6 +119,7 @@ class MessageResponse(BaseModel):
     role: str = Field(..., examples=["user"])
     content: str
     timestamp: datetime
+    metadata: dict = Field(default_factory=dict)
 
     model_config = {"from_attributes": True}
 

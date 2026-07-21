@@ -115,15 +115,18 @@ async def add_message(
     role: str,
     content: str,
     trace_data: list[dict] | None = None,
+    metadata: dict | None = None,
 ) -> ChatMessage:
     """
-    Add a message to an existing chat session.
+    Add a new message to a session.
 
     Args:
         db: Async database session.
         session_id: UUID of the chat session.
-        role: Message role ('user' or 'assistant').
-        content: Message text content.
+        role: "user" or "assistant".
+        content: The message text.
+        trace_data: Optional execution trace JSON.
+        metadata: Optional metadata (e.g. sources).
 
     Returns:
         The newly created ChatMessage.
@@ -133,6 +136,7 @@ async def add_message(
         role=role,
         content=content,
         trace_data=trace_data,
+        message_metadata=metadata,
     )
     db.add(message)
     await db.flush()

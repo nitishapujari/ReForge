@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { MessageSquare, Library, Upload, Settings, Activity, ChevronsUpDown, User2, Monitor, Sun, Moon, Info } from "lucide-react"
+import { MessageSquare, Library, Upload, Settings, Activity, ChevronsUpDown, User2, Monitor, Sun, Moon, Info, Plus } from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { motion } from "framer-motion"
@@ -63,11 +63,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar {...props} className="bg-background/40 backdrop-blur-xl border-r shadow-lg border-sidebar-border/50">
       <SidebarHeader className="p-4 border-b">
-        <Link href="/" className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition-opacity">
+        <Link href="/" className="flex items-center gap-2 font-bold text-lg hover:opacity-80 transition-opacity mb-6">
           <div className="flex items-center justify-center w-8 h-8 shrink-0">
             <Logo />
           </div>
           ReForge
+        </Link>
+        <Link href="/chat">
+          <button className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm border-border bg-background hover:bg-muted text-foreground">
+            <Plus className="w-4 h-4" />
+            New Chat
+          </button>
         </Link>
       </SidebarHeader>
       <SidebarContent>

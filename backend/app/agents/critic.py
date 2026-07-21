@@ -7,6 +7,7 @@ to ensure groundedness and prevent hallucinations.
 
 import time
 from pydantic import BaseModel, Field
+from langchain_core.runnables import RunnableConfig
 
 from app.graph.state import GraphState, TraceEntry
 from app.prompts import (
@@ -31,7 +32,7 @@ class CriticEvaluation(BaseModel):
     missing_information: list[str] = Field(description="List of information requested in the question but missing from the context.")
 
 
-def critique_node(state: GraphState) -> dict:
+def critique_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
     """
     Critic node — evaluates the answer quality and groundedness.
 
@@ -48,6 +49,13 @@ def critique_node(state: GraphState) -> dict:
         Dict of state updates.
     """
     start_time = time.perf_counter()
+
+    stream_callback = None
+    if config and "configurable" in config:
+        stream_callback = config["configurable"].get("stream_callback")
+        
+    if stream_callback:
+        stream_callback({"type": "status", "message": "⚖️ Critic evaluating draft...", "status": "info"})
 
     question = state.get("rewritten_question") or state["question"]
     docs = state.get("retrieved_docs", [])
@@ -132,11 +140,19 @@ def critique_node(state: GraphState) -> dict:
         elapsed_ms,
     )
 
+    import json
+    
     trace_entry = TraceEntry(
         node="critique",
         execution_time_ms=round(elapsed_ms, 2),
-        input_summary=f"context_docs={len(docs)}, answer_len={len(answer)}",
-        output_summary=f"grounded={grounded}, confidence={confidence}",
+        input_summary=json.dumps({"context_docs": len(docs), "answer_len": len(answer)}),
+        output_summary=json.dumps({
+            "grounded": grounded, 
+            "confidence": confidence,
+            "verification_summary": feedback,
+            "missing_information": missing,
+            "error": "Verification skipped (API unavailable)" if grounded is None else None
+        }),
         attempt=attempt,
         decision=None,
     )

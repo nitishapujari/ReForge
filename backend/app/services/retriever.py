@@ -6,7 +6,7 @@ given a user query. Returns ranked results with similarity scores.
 Supports configurable top_k for adaptive retrieval depth.
 """
 
-from app.constants import DEFAULT_TOP_K
+from app.constants import DEFAULT_TOP_K, RELEVANCE_THRESHOLD
 from app.services.vectorstore import get_collection
 from app.utils.logger import get_logger
 
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 def retrieve(
     query: str,
     top_k: int = DEFAULT_TOP_K,
-    score_threshold: float = 0.75,
+    score_threshold: float = RELEVANCE_THRESHOLD,
 ) -> dict:
     """
     Perform semantic search against the vector store.

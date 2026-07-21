@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale } from "lucide-react"
@@ -12,12 +13,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { Card, CardContent } from "@/components/ui/card"
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 
 type Message = {
   id: string
   role: "user" | "assistant"
   content: string
   status?: "generating" | "done" | "error"
+  agentStatuses?: { message: string, status: string }[]
   metadata?: {
     response_type?: string
     verification_status?: string
@@ -81,12 +84,15 @@ function ThoughtProcess() {
   )
 }
 
-export default function ChatPage() {
+function ChatContent() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
   const [sessionId, setSessionId] = useState<string>("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [initialSuggestions, setInitialSuggestions] = useState<string[]>([])
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
 
   const handleCopy = (id: string, content: string) => {
     navigator.clipboard.writeText(content)
@@ -103,13 +109,13 @@ export default function ChatPage() {
     }
   }, [messages])
 
+  const searchParams = useSearchParams()
+  const sessionParam = searchParams.get('session')
+
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const searchParams = new URLSearchParams(window.location.search)
-      const session = searchParams.get('session')
-      if (session) {
-        setSessionId(session)
-        fetch(`/api/v1/history/${session}`)
+    if (sessionParam) {
+      setSessionId(sessionParam)
+      fetch(`/api/v1/history/${sessionParam}`)
           .then(res => res.json())
           .then(data => {
             if (data && data.messages) {
@@ -123,9 +129,23 @@ export default function ChatPage() {
             }
           })
           .catch(err => console.error("Failed to load session history:", err))
-      }
+    } else {
+      setSessionId("")
+      setMessages([])
+      
+      // Fetch dynamic initial suggestions
+      setIsLoadingSuggestions(true)
+      fetch(`/api/v1/chat/initial_suggestions`)
+        .then(res => res.json())
+        .then(data => {
+           if (data && data.suggestions) {
+             setInitialSuggestions(data.suggestions)
+           }
+        })
+        .catch(err => console.error("Failed to fetch initial suggestions:", err))
+        .finally(() => setIsLoadingSuggestions(false))
     }
-  }, [])
+  }, [sessionParam])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
@@ -169,13 +189,14 @@ export default function ChatPage() {
     }
   }
 
-  const handleSend = async () => {
-    if (!input.trim() || isGenerating) return
+  const handleSend = async (overrideInput?: string | React.MouseEvent | React.FormEvent) => {
+    const textToSend = typeof overrideInput === "string" ? overrideInput : input
+    if (!textToSend.trim() || isGenerating) return
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
-      content: input.trim(),
+      content: textToSend.trim(),
     }
 
     const assistantMessageId = crypto.randomUUID()
@@ -187,8 +208,9 @@ export default function ChatPage() {
     }
 
     setMessages((prev) => [...prev, userMessage, assistantMessage])
-    setInput("")
+    if (overrideInput === undefined) setInput("")
     setIsGenerating(true)
+    setSuggestions([])
 
     try {
       const response = await fetch("/api/v1/chat/stream", {
@@ -238,6 +260,14 @@ export default function ChatPage() {
                         : msg
                     )
                   )
+                } else if (data.type === "status") {
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, agentStatuses: [...(msg.agentStatuses || []), { message: data.message, status: data.status }] }
+                        : msg
+                    )
+                  )
                 } else if (data.type === "clear") {
                   currentContent = ""
                   setMessages((prev) =>
@@ -272,6 +302,19 @@ export default function ChatPage() {
                         : msg
                     )
                   )
+                  
+                  // Fetch suggestions asynchronously
+                  const activeSessionId = data.session_id || sessionId
+                  if (activeSessionId) {
+                    fetch(`/api/v1/chat/${activeSessionId}/suggestions`)
+                      .then(r => r.json())
+                      .then(d => {
+                        if (d.suggestions && d.suggestions.length > 0) {
+                          setSuggestions(d.suggestions)
+                        }
+                      })
+                      .catch(e => console.error("Failed to fetch suggestions:", e))
+                  }
                 } else if (data.type === "error") {
                   setMessages((prev) =>
                     prev.map((msg) =>
@@ -349,22 +392,28 @@ export default function ChatPage() {
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full px-4 mt-6">
-                {[
-                  "Summarize the key points from my documents",
-                  "What are the main applications of a DBMS?",
-                  "Explain the architecture mentioned in the notes",
-                  "Can you find any specific dates or names?"
-                ].map((query, i) => (
-                  <button 
-                    key={i} 
-                    onClick={() => {
-                      setInput(query);
-                    }}
-                    className="text-left px-4 py-3 rounded-2xl bg-card border border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary hover:shadow-md transition-all text-sm shadow-sm group"
-                  >
-                    <span className="text-foreground group-hover:text-primary transition-colors">{query}</span>
-                  </button>
-                ))}
+                {isLoadingSuggestions ? (
+                  Array(4).fill(0).map((_, i) => (
+                    <div key={i} className="h-[46px] rounded-2xl bg-card border border-border/50 shadow-sm animate-pulse"></div>
+                  ))
+                ) : (
+                  (initialSuggestions.length > 0 ? initialSuggestions : [
+                    "What can you help me with?",
+                    "How do I upload my documents?",
+                    "Can you summarize my notes?",
+                    "What topics are covered in my files?"
+                  ]).map((query, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => {
+                        setInput(query);
+                      }}
+                      className="text-left px-4 py-3 rounded-2xl bg-card border border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary hover:shadow-md transition-all text-sm shadow-sm group"
+                    >
+                      <span className="text-foreground group-hover:text-primary transition-colors">{query}</span>
+                    </button>
+                  ))
+                )}
               </div>
             </motion.div>
           ) : (
@@ -403,8 +452,52 @@ export default function ChatPage() {
                             <AlertTriangle className="h-4 w-4" />
                             {message.content}
                           </div>
-                        ) : message.content ? (
+                        ) : (
                           <>
+                            {/* Live Heartbeat during generation */}
+                            {message.status === "generating" && message.agentStatuses && message.agentStatuses.length > 0 && (
+                              <div className="text-[11px] mb-4 border rounded-lg bg-card overflow-hidden font-mono">
+                                <div className="p-3 bg-muted/10 space-y-2">
+                                  {message.agentStatuses?.map((s, i) => (
+                                    <motion.div 
+                                      key={i} 
+                                      initial={{ opacity: 0, x: -5 }} 
+                                      animate={{ opacity: 1, x: 0 }}
+                                      className={cn("flex items-start gap-2", 
+                                        s.status === "warning" ? "text-orange-500" : 
+                                        s.status === "error" ? "text-destructive" : 
+                                        s.status === "success" ? "text-green-500" : 
+                                        "text-muted-foreground"
+                                      )}
+                                    >
+                                      {i === (message.agentStatuses?.length || 0) - 1 && s.status !== "success" && s.status !== "error" ? (
+                                        <Loader2 className="w-3 h-3 animate-spin shrink-0 mt-0.5" />
+                                      ) : (
+                                        <div className="w-3 h-3 flex items-center justify-center shrink-0 mt-0.5">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                                        </div>
+                                      )}
+                                      {(() => {
+                                        let text = s.message
+                                        const isDone = i < (message.agentStatuses?.length || 0) - 1 || message.status !== "generating"
+                                        if (isDone) {
+                                          text = text.replace("Searching documents...", "Searched documents")
+                                            .replace("Drafting response...", "Drafted response")
+                                            .replace("Critic evaluating draft...", "Critic evaluated draft")
+                                        }
+                                        return <span className="flex-1">{text}</span>
+                                      })()}
+                                    </motion.div>
+                                  ))}
+                                  {(!message.agentStatuses || message.agentStatuses.length === 0) && (
+                                    <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
+                                      <Loader2 className="w-3 h-3 animate-spin" /> <span>Initializing pipeline...</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
                             {/* Always show thought process accordion if trace_data is available */}
                             {message.metadata?.trace_data && message.metadata.trace_data.length > 0 && (
                               <details className="group/trace text-xs mb-4 border rounded-lg bg-card overflow-hidden">
@@ -421,14 +514,20 @@ export default function ChatPage() {
                                     
                                     if (trace.node === 'retrieve') {
                                       icon = <Search className="w-3 h-3 text-blue-500" />
-                                      const queryMatch = trace.input_summary?.match(/query='(.*?)'/)
+                                      const queryMatch = trace.input_summary?.match(/"query":\s*"(.*?)"/)
                                       text = queryMatch ? `Searched documents for: "${queryMatch[1]}"` : "Retrieved information from documents."
                                     } else if (trace.node === 'generate') {
                                       icon = <Bot className="w-3 h-3 text-purple-500" />
                                       text = `Drafted response (Attempt ${trace.attempt})`
                                     } else if (trace.node === 'critique') {
                                       icon = <Scale className="w-3 h-3 text-orange-500" />
-                                      text = trace.decision === 'rewrite' ? `Critic rejected draft for lacking grounding. Retrying...` : `Critic verified response is grounded.`
+                                      if (trace.output_summary?.includes('"grounded": true')) {
+                                        text = `Critic verified response is grounded.`
+                                      } else if (trace.output_summary?.includes('"grounded": false')) {
+                                        text = `Critic rejected draft for lacking grounding.`
+                                      } else {
+                                        text = `Critic verification unavailable.`
+                                      }
                                     } else if (trace.node === 'rewrite') {
                                       icon = <RefreshCw className="w-3 h-3 text-indigo-500" />
                                       text = `Reformulated search query to try again.`
@@ -437,7 +536,17 @@ export default function ChatPage() {
                                       text = trace.decision === 'bypass' ? "Decided to bypass RAG (general conversation)." : "Decided to route to RAG."
                                     } else if (trace.node === 'decision') {
                                       icon = <GitBranch className="w-3 h-3 text-gray-500" />
-                                      text = trace.decision === 'accept' ? "Accepted answer as grounded." : "Decided to retry formulation."
+                                      if (trace.decision === 'accept') {
+                                        if (trace.input_summary?.includes('"grounded": null')) {
+                                          text = "Accepted best-effort answer (verification unavailable)."
+                                        } else {
+                                          text = "Accepted answer as grounded."
+                                        }
+                                      } else if (trace.decision === 'rewrite') {
+                                        text = "Decided to retry formulation."
+                                      } else {
+                                        text = `Decision: ${trace.decision}`
+                                      }
                                     }
 
                                     return (
@@ -452,19 +561,53 @@ export default function ChatPage() {
                                 </div>
                               </details>
                             )}
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                              {message.content}
-                            </ReactMarkdown>
+                            
+                            {message.content && (
+                              <ReactMarkdown 
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  a: ({node, ...props}) => {
+                                    if (props.href?.startsWith('#citation-')) {
+                                      const idx = parseInt(props.href.replace('#citation-', '')) - 1
+                                      const source = (message.metadata?.sources?.[idx] || message.metadata?.sources?.[0]) as any
+                                      if (!source) {
+                                        return (
+                                          <span className="inline-flex items-center justify-center w-5 h-5 ml-1 rounded-full bg-primary/5 text-muted-foreground cursor-not-allowed" title={`Source unavailable (tried index ${idx})`}>
+                                            <FileText className="w-3 h-3 opacity-50" />
+                                          </span>
+                                        )
+                                      }
+                                      
+                                      return (
+                                        <HoverCard>
+                                          <HoverCardTrigger>
+                                            <span className="inline-flex items-center justify-center w-5 h-5 ml-1 rounded-full bg-primary/10 text-primary cursor-pointer hover:bg-primary/20 transition-colors">
+                                              <FileText className="w-3 h-3" />
+                                            </span>
+                                          </HoverCardTrigger>
+                                          <HoverCardContent side="top" align="center" className="w-80 p-0 overflow-hidden border-primary/20 shadow-xl z-50">
+                                            <div className="bg-primary/5 px-3 py-2 border-b border-border/50 flex items-center gap-2">
+                                              <FileText className="w-3.5 h-3.5 text-primary" />
+                                              <span className="text-xs font-semibold text-primary truncate">{source.filename || `Source ${idx + 1}`}</span>
+                                            </div>
+                                            <div className="p-3 bg-card/95 backdrop-blur max-h-48 overflow-y-auto">
+                                              <p className="text-[11px] leading-relaxed font-mono text-muted-foreground whitespace-pre-wrap">
+                                                {source.chunks?.[0]?.content_preview || source.content_preview || "Snippet not available."}
+                                              </p>
+                                            </div>
+                                          </HoverCardContent>
+                                        </HoverCard>
+                                      )
+                                    }
+                                    return <a {...props} className="text-primary hover:underline" />
+                                  }
+                                }}
+                              >
+                                {message.content.replace(/\[(\d+)\]/g, '[$1](#citation-$1)')}
+                              </ReactMarkdown>
+                            )}
                           </>
-                        ) : message.status === "generating" ? (
-                          <div className="text-xs mb-2 border rounded-lg bg-card overflow-hidden">
-                            <div className="flex items-center justify-between p-2.5 bg-muted/50">
-                              <div className="flex items-center gap-2 font-medium text-muted-foreground animate-pulse">
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" /> <ThoughtProcess />
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
+                        )}
                       </div>
                     ) : (
                       <div className="whitespace-pre-wrap text-sm">{message.content}</div>
@@ -508,15 +651,25 @@ export default function ChatPage() {
                             <FileText className="h-3 w-3 mr-1" /> Sources
                           </p>
                           <div className="flex flex-col gap-3">
-                            {message.metadata.sources.map((src: any, idx: number) => (
+                            {Object.values(
+                              (message.metadata?.sources || []).reduce((acc: any, src: any) => {
+                                if (!acc[src.filename]) {
+                                  acc[src.filename] = { ...src, chunks: [...(src.chunks || [])] }
+                                } else {
+                                  acc[src.filename].chunks.push(...(src.chunks || []))
+                                }
+                                return acc
+                              }, {})
+                            ).map((src: any, idx: number) => (
                               <Card key={idx} className="bg-background/50 text-xs w-full">
                                 <CardContent className="p-3">
                                   <div className="flex justify-between items-start">
-                                    <p className="font-semibold text-primary truncate flex-1">
-                                      {src.filename || `Source ${idx + 1}`}
+                                    <p className="font-semibold text-primary truncate flex-1 flex items-center">
+                                      <FileText className="w-3.5 h-3.5 mr-1.5 text-primary/70" />
+                                      {src.filename || `Source`}
                                     </p>
                                     <Badge variant="secondary" className="ml-2 text-[10px] shrink-0 font-normal">
-                                      {src.chunks?.length || 1} match{(src.chunks?.length || 1) > 1 ? 'es' : ''}
+                                      {src.chunks?.length || 1} match{(src.chunks?.length || 1) !== 1 ? 'es' : ''}
                                     </Badge>
                                   </div>
                                   
@@ -607,6 +760,26 @@ export default function ChatPage() {
               </motion.div>
             ))
           )}
+          
+          {/* Suggestions */}
+          {suggestions.length > 0 && !isGenerating && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex flex-wrap gap-2 mt-4 ml-12"
+            >
+              {suggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleSend(suggestion)}
+                  className="text-xs text-primary/80 bg-primary/10 hover:bg-primary/20 hover:text-primary transition-colors border border-primary/20 rounded-full px-4 py-1.5 font-medium flex items-center gap-1.5 text-left"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </motion.div>
+          )}
+
           </AnimatePresence>
         </div>
       </div>
@@ -665,5 +838,13 @@ export default function ChatPage() {
         </motion.div>
       </div>
     </div>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+      <ChatContent />
+    </Suspense>
   )
 }
