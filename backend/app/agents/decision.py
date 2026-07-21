@@ -59,19 +59,19 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         else:
             decision = "fail"
     else:
-        if not grounded or confidence < CONFIDENCE_THRESHOLD:
-            # If it's ungrounded, maybe it needs a rewrite or more docs.
-            # If there's missing information, definitely rewrite.
-            if missing_information:
-                decision = "rewrite"
-            elif unsupported_claims:
+        # If there's missing information, we should rewrite the query to try and find it,
+        # even if the current answer (e.g., "I don't know") is technically grounded.
+        if missing_information:
+            decision = "rewrite"
+        elif not grounded or confidence < CONFIDENCE_THRESHOLD:
+            if unsupported_claims:
                 decision = "rewrite"
             else:
                 # Not grounded but no missing/unsupported specifically called out? 
                 # Escalate to fetch more documents (expand top_k).
                 decision = "escalate"
         else:
-            # Grounded and confident.
+            # Grounded, confident, and no missing info.
             decision = "accept"
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000

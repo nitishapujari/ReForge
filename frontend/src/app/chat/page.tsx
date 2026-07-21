@@ -616,6 +616,12 @@ function ChatContent() {
                   
                   {message.role === "assistant" && message.metadata && message.status !== "error" && (
                     <div className="flex flex-wrap items-center gap-2 mt-1">
+                      {message.metadata.attempts && message.metadata.attempts > 1 && (
+                        <Badge variant="outline" className="text-xs bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" title={`Answer was iteratively refined ${message.metadata.attempts} times before finalizing.`}>
+                          <RefreshCw className="h-3 w-3 mr-1" />
+                          Self-Healed ({message.metadata.attempts} passes)
+                        </Badge>
+                      )}
                       {/* Removed the old Self-Healed dropdown since we now have the global thought process */}
                       {message.metadata.response_type === "GROUNDED" && message.metadata.verification_status === "UNAVAILABLE" ? (
                         <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-500/20">
