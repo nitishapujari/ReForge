@@ -520,10 +520,10 @@ async def get_initial_suggestions(
     
     # Fallback/default generic questions
     default_suggestions = [
-        "What can you help me with?",
-        "How do I upload my documents?",
-        "Can you summarize my notes?",
-        "What topics are covered in my files?"
+        "Summarize my notes",
+        "Compare two documents",
+        "Find important topics",
+        "Explain difficult concepts"
     ]
     
     try:

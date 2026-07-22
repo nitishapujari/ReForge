@@ -210,6 +210,26 @@ async def list_documents(
     ]
 
 
+from pydantic import BaseModel
+
+class RenameDocumentRequest(BaseModel):
+    filename: str
+
+@router.patch("/{document_id}/rename", summary="Rename Document")
+async def rename_document(
+    document_id: str,
+    request: RenameDocumentRequest,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db_session)
+) -> dict:
+    doc = await db.get(Document, document_id)
+    if not doc or doc.user_id != current_user.id or doc.is_deleted:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    
+    doc.filename = request.filename
+    await db.commit()
+    return {"status": "success", "filename": doc.filename}
+
 @router.delete(
     "/{document_id}",
     status_code=status.HTTP_200_OK,

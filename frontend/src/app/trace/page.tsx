@@ -3,6 +3,7 @@
 import Link from "next/link"
 
 import { useState, useEffect, useMemo } from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { 
   Accordion, AccordionContent, AccordionItem, AccordionTrigger 
 } from "@/components/ui/accordion"
@@ -63,6 +64,7 @@ const shortenId = (id: string) => {
 // Node Component
 const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: TraceEntry }) => {
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showTechnical, setShowTechnical] = useState(false)
   
   const tryParseJSON = (str: string) => {
     try {
@@ -273,17 +275,30 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
 
               {/* TECHNICAL DETAILS COLLAPSIBLE */}
               <div className="md:col-span-2 mt-4 pt-2 border-t">
-                <details className="group">
-                  <summary className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground list-none">
-                    <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-                    Technical Details
-                  </summary>
-                  <div className="mt-3 p-3 bg-muted/20 border rounded text-xs font-mono text-muted-foreground overflow-x-auto">
-                    <div className="mb-2"><strong>Node:</strong> {entry.node}</div>
-                    <div className="mb-2"><strong>Input Payload:</strong><br/>{entry.input_summary}</div>
-                    <div><strong>Output Payload:</strong><br/>{entry.output_summary}</div>
-                  </div>
-                </details>
+                <div 
+                  className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground select-none"
+                  onClick={(e) => { e.stopPropagation(); setShowTechnical(!showTechnical); }}
+                >
+                  <ChevronRight className={`w-3 h-3 transition-transform duration-200 ${showTechnical ? 'rotate-90' : ''}`} />
+                  Technical Details
+                </div>
+                <AnimatePresence>
+                  {showTechnical && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 p-3 bg-muted/20 border rounded text-xs font-mono text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words max-w-full">
+                        <div className="mb-2"><strong>Node:</strong> {entry.node}</div>
+                        <div className="mb-2"><strong>Input Payload:</strong><br/>{entry.input_summary}</div>
+                        <div><strong>Output Payload:</strong><br/>{entry.output_summary}</div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
             </div>
@@ -395,8 +410,8 @@ export default function TracePage() {
                 <button
                   key={s.id}
                   onClick={() => setSelectedSessionId(s.id)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors flex flex-col gap-1 ${
-                    selectedSessionId === s.id ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
+                  className={`w-full text-left p-3 rounded-lg transition-all duration-200 flex flex-col gap-1 border-l-4 ${
+                    selectedSessionId === s.id ? 'bg-primary/10 text-primary border-primary font-semibold shadow-sm' : 'hover:bg-muted border-transparent font-medium'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -429,10 +444,13 @@ export default function TracePage() {
           </div>
           {selectedSessionId && (
             <Link href={`/chat?session=${selectedSessionId}`}>
-              <Button variant="outline" size="sm" className="shadow-sm">
-                <MessageSquare className="w-4 h-4 mr-2" />
-                Open Chat
-              </Button>
+              <motion.div whileHover={{ y: -1, scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Button variant="outline" size="sm" className="shadow-sm group hover:shadow-md hover:border-primary/30 transition-all duration-300">
+                  <MessageSquare className="w-4 h-4 mr-2 group-hover:text-primary transition-colors" />
+                  Open Chat
+                  <ChevronRight className="w-3 h-3 ml-1 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300 -mr-2" />
+                </Button>
+              </motion.div>
             </Link>
           )}
         </div>
@@ -446,10 +464,22 @@ export default function TracePage() {
           )}
 
           {!selectedSessionId ? (
-            <div className="h-64 flex flex-col items-center justify-center text-muted-foreground">
-              <Activity className="w-12 h-12 mb-4 opacity-20" />
-              <p>Select a chat session from the list to view its verification log.</p>
-            </div>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="h-64 flex flex-col items-center justify-center text-muted-foreground"
+            >
+              <motion.div
+                animate={{ rotate: [0, 5, -5, 0], scale: [1, 1.05, 1] }}
+                transition={{ repeat: Infinity, duration: 4, ease: "easeInOut" }}
+              >
+                <ShieldCheck className="w-16 h-16 mb-6 opacity-30 text-primary" />
+              </motion.div>
+              <p className="text-base font-medium max-w-sm text-center">
+                Select a chat session to inspect the complete retrieval and verification pipeline.
+              </p>
+            </motion.div>
           ) : loadingTrace ? (
             <div className="space-y-4 max-w-3xl">
               {[1, 2, 3].map(i => (
@@ -533,11 +563,17 @@ export default function TracePage() {
                               {/* Nodes in this iteration */}
                               <div className="ml-2">
                                 {displayEntries.map((entry, i) => (
-                                  <TraceNode 
-                                    key={i} 
-                                    entry={entry} 
-                                    finalOutcome={entry.node === 'critique' ? decisionEntry : undefined}
-                                  />
+                                  <motion.div
+                                    key={`${entry.node}-${i}`} // use node+index as key to prevent duplicate keys while preserving state
+                                    initial={{ opacity: 0, x: -10 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ duration: 0.4, delay: i * 0.15, ease: "easeOut" }}
+                                  >
+                                    <TraceNode 
+                                      entry={entry} 
+                                      finalOutcome={entry.node === 'critique' ? decisionEntry : undefined}
+                                    />
+                                  </motion.div>
                                 ))}
                               </div>
                             </div>

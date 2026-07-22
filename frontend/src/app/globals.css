@@ -84,6 +84,13 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/* Smooth theme transitions */
+*, ::before, ::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);

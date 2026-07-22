@@ -97,6 +97,10 @@ def critique_node(state: GraphState, config: RunnableConfig | None = None) -> di
             f"[Source {i}: {source_label}, Page {page}]\n{doc}"
         )
     context = "\n\n---\n\n".join(context_parts)
+    
+    web_context_list = state.get("web_context", [])
+    if web_context_list:
+        context += "\n\n---\n\n" + "\n\n---\n\n".join(web_context_list)
 
     user_prompt = CRITIC_USER_PROMPT.format(
         context=context,

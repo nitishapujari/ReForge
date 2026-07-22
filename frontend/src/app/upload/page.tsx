@@ -288,17 +288,24 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="flex-1 p-6 flex flex-col items-center min-h-[calc(100vh-3rem)]">
+    <motion.div 
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="flex-1 p-6 flex flex-col items-center min-h-[calc(100vh-3rem)]"
+    >
       <div className="w-full max-w-3xl mb-6">
         <h1 className="text-3xl font-bold tracking-tight mb-2">Upload Documents</h1>
-        <p className="text-muted-foreground">Select multiple files (PDF, TXT, DOCX, CSV, MD, Images) to add to your documents.</p>
+        <p className="text-muted-foreground">Select multiple files to add to your documents.</p>
       </div>
 
       <motion.div 
         animate={isDragging ? { scale: 1.02 } : { scale: 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        className={`w-full max-w-3xl border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-colors cursor-pointer mb-8
-          ${isDragging ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20' : 'border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50'}`}
+        className={`w-full max-w-3xl border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center transition-all duration-300 cursor-pointer mb-8
+          ${isDragging 
+            ? 'border-primary bg-primary/10 shadow-lg shadow-primary/20 brightness-110' 
+            : 'border-muted-foreground/25 hover:border-primary/40 hover:bg-muted/50 hover:shadow-sm'}`}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -307,11 +314,25 @@ export default function UploadPage() {
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <UploadCloud className="w-8 h-8 text-primary" />
         </div>
-        <h3 className="text-lg font-semibold mb-1">Click or drag files to upload</h3>
-        <p className="text-sm text-muted-foreground mb-4">Supported formats: PDF, TXT, DOCX, CSV, MD, PNG, JPG (Max 20MB per file)</p>
-        <Button variant="outline" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
-          Browse Files
-        </Button>
+        <h3 className="text-lg font-semibold mb-2">
+          {isDragging ? "Drop files here to upload" : "Click or drag files to upload"}
+        </h3>
+        
+        <div className="flex flex-col items-center gap-1 mb-6 text-sm text-muted-foreground">
+          <p>Supported formats: <span className="font-medium text-foreground/80">PDF, TXT, DOCX, CSV, MD, PNG, JPG</span></p>
+          <p className="text-xs opacity-70">Maximum size: 20MB per file</p>
+        </div>
+
+        <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }}>
+          <Button 
+            variant="outline" 
+            type="button" 
+            className="hover:shadow-md transition-shadow duration-300"
+            onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+          >
+            Browse Files
+          </Button>
+        </motion.div>
         <input 
           type="file" 
           multiple
@@ -421,6 +442,6 @@ export default function UploadPage() {
         ))}
         </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   )
 }

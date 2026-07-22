@@ -9,9 +9,14 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { FileText, Trash2, Search, Library, AlertCircle, ChevronLeft, ChevronRight, Plus } from "lucide-react"
+import { 
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
+import { FileText, Trash2, Search, Library, AlertCircle, ChevronLeft, ChevronRight, Plus, MoreVertical, PenLine, Info, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
 interface DocumentData {
@@ -33,6 +38,12 @@ export default function KnowledgeBasePage() {
 
   const [documentToDelete, setDocumentToDelete] = useState<DocumentData | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const [documentToRename, setDocumentToRename] = useState<DocumentData | null>(null)
+  const [newFilename, setNewFilename] = useState("")
+  const [isRenaming, setIsRenaming] = useState(false)
+
+  const [documentToView, setDocumentToView] = useState<DocumentData | null>(null)
 
   // Fetch documents
   const fetchDocuments = async (showLoading = true) => {
@@ -112,6 +123,31 @@ export default function KnowledgeBasePage() {
     }
   }
 
+  // Rename document
+  const handleRename = async () => {
+    if (!documentToRename || !newFilename.trim() || newFilename === documentToRename.filename) {
+      setDocumentToRename(null)
+      return
+    }
+    setIsRenaming(true)
+    try {
+      const res = await fetch(`/api/v1/documents/${documentToRename.document_id}/rename`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename: newFilename.trim() })
+      })
+      if (!res.ok) throw new Error("Failed to rename document")
+      
+      const data = await res.json()
+      setDocuments(prev => prev.map(d => d.document_id === documentToRename.document_id ? { ...d, filename: data.filename } : d))
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to rename document.")
+    } finally {
+      setIsRenaming(false)
+      setDocumentToRename(null)
+    }
+  }
+
   // Helpers
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -166,16 +202,16 @@ export default function KnowledgeBasePage() {
           </div>
         </div>
       ) : documents.length === 0 ? (
-        <div className="border border-dashed rounded-xl p-16 flex flex-col items-center justify-center text-center bg-muted/20">
+        <div className="border border-dashed rounded-xl p-16 flex flex-col items-center justify-center text-center bg-muted/20 hover:bg-muted/30 transition-colors duration-300">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <Library className="w-8 h-8 text-primary" />
           </div>
-          <h2 className="text-xl font-semibold mb-2">No documents found</h2>
+          <h2 className="text-xl font-semibold mb-2">No documents uploaded yet</h2>
           <p className="text-muted-foreground mb-6 max-w-sm">
-            You haven't uploaded any documents yet. Upload some PDF, TXT, DOCX, CSV, MD, or Image files to give ReForge context for your questions.
+            Upload your first document to start building your knowledge base.
           </p>
           <Link href="/upload">
-            <Button size="lg">Go to Upload Page</Button>
+            <Button size="lg" className="hover:shadow-md transition-shadow">Upload Document</Button>
           </Link>
         </div>
       ) : (
@@ -206,49 +242,61 @@ export default function KnowledgeBasePage() {
               <TableBody>
                 {currentDocuments.length > 0 ? (
                   currentDocuments.map((doc) => (
-                    <TableRow key={doc.document_id}>
+                    <TableRow key={doc.document_id} className="group hover:bg-muted/50 cursor-pointer transition-colors duration-200 border-b border-border/50">
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 shrink-0 bg-primary/10 rounded flex items-center justify-center">
+                          <div className="w-8 h-8 shrink-0 bg-primary/10 rounded flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                             <FileText className="w-4 h-4 text-primary" />
                           </div>
                           <div className="flex flex-col overflow-hidden">
-                            <span className="font-medium truncate" title={doc.filename}>{doc.filename}</span>
+                            <span className="font-medium truncate transition-colors group-hover:text-primary" title={doc.filename}>{doc.filename}</span>
                             <span className="text-xs text-muted-foreground mt-0.5 font-medium">{getFileType(doc.filename)} Document</span>
                           </div>
                         </div>
                       </TableCell>
                       <TableCell>
                         {doc.status === 'processing' ? (
-                          <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400">
+                          <Badge variant="outline" className="w-24 justify-center bg-amber-500/10 text-amber-600 border-amber-500/20 dark:text-amber-400 group-hover:border-amber-500/40 transition-colors">
                             Processing
                           </Badge>
                         ) : doc.status === 'failed' ? (
-                          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+                          <Badge variant="outline" className="w-24 justify-center bg-destructive/10 text-destructive border-destructive/20 group-hover:border-destructive/40 transition-colors">
                             Failed
                           </Badge>
                         ) : (
-                          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400">
+                          <Badge variant="outline" className="w-24 justify-center bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400 group-hover:border-emerald-500/40 transition-colors">
                             Indexed
                           </Badge>
                         )}
                       </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
+                      <TableCell className="text-right font-mono text-sm group-hover:text-foreground transition-colors">
                         {doc.chunk_count.toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-right text-muted-foreground group-hover:text-foreground transition-colors">
                         {formatDate(doc.created_at)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors duration-200"
-                          onClick={() => setDocumentToDelete(doc)}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          <span className="sr-only">Delete {doc.filename}</span>
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity focus:opacity-100 data-[state=open]:opacity-100 hover:bg-muted hover:text-foreground">
+                            <MoreVertical className="h-4 w-4" />
+                            <span className="sr-only">Open menu</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuItem className="text-muted-foreground cursor-pointer hover:text-foreground" onClick={(e) => { e.stopPropagation(); setDocumentToRename(doc); setNewFilename(doc.filename); }}>
+                              <PenLine className="h-4 w-4 mr-2" /> Rename
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-muted-foreground cursor-pointer hover:text-foreground" onClick={(e) => { e.stopPropagation(); setDocumentToView(doc); }}>
+                              <Info className="h-4 w-4 mr-2" /> View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem 
+                              className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer" 
+                              onClick={(e) => { e.stopPropagation(); setDocumentToDelete(doc); }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -316,6 +364,74 @@ export default function KnowledgeBasePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={!!documentToRename} onOpenChange={(open) => !open && setDocumentToRename(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Document</DialogTitle>
+            <DialogDescription>
+              Enter a new name for the document.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="filename" className="sr-only">Filename</Label>
+            <Input
+              id="filename"
+              value={newFilename}
+              onChange={(e) => setNewFilename(e.target.value)}
+              disabled={isRenaming}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDocumentToRename(null)} disabled={isRenaming}>Cancel</Button>
+            <Button onClick={handleRename} disabled={isRenaming || !newFilename.trim()}>
+              {isRenaming ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View Details Dialog */}
+      <Dialog open={!!documentToView} onOpenChange={(open) => !open && setDocumentToView(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Document Details</DialogTitle>
+            <DialogDescription>Information about the ingested document.</DialogDescription>
+          </DialogHeader>
+          {documentToView && (
+            <div className="space-y-4 py-4 text-sm">
+              <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                <span className="text-muted-foreground font-medium">Filename</span>
+                <span className="col-span-2 break-all">{documentToView.filename}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                <span className="text-muted-foreground font-medium">Document ID</span>
+                <span className="col-span-2 break-all font-mono text-xs">{documentToView.document_id}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                <span className="text-muted-foreground font-medium">Type</span>
+                <span className="col-span-2">{getFileType(documentToView.filename)}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                <span className="text-muted-foreground font-medium">Status</span>
+                <span className="col-span-2 capitalize">{documentToView.status}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-b pb-2">
+                <span className="text-muted-foreground font-medium">Vector Chunks</span>
+                <span className="col-span-2">{documentToView.chunk_count.toLocaleString()}</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 pb-2">
+                <span className="text-muted-foreground font-medium">Ingested On</span>
+                <span className="col-span-2">{new Date(documentToView.created_at).toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setDocumentToView(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

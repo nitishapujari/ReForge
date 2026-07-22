@@ -4,11 +4,11 @@ import { useState, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale, X, Hash } from "lucide-react"
+import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale, X, Hash, Square, ArrowDown, Activity } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import TextareaAutosize from "react-textarea-autosize"
 
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
@@ -44,14 +44,18 @@ function ChatContent() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [sessionId, setSessionId] = useState<string>("")
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [expandedSources, setExpandedSources] = useState<Record<string, boolean>>({})
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [initialSuggestions, setInitialSuggestions] = useState<string[]>([])
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Document @-mentions state
   const [availableDocs, setAvailableDocs] = useState<{document_id: string, filename: string}[]>([])
   const [selectedDocs, setSelectedDocs] = useState<{document_id: string, filename: string}[]>([])
   const [mentionOpen, setMentionOpen] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
 
   useEffect(() => {
     fetch("/api/v1/documents")
@@ -73,11 +77,31 @@ function ChatContent() {
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    // Scroll to bottom when messages change
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    if (scrollRef.current && isAtBottom) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth"
+      })
     }
-  }, [messages])
+  }, [messages, isAtBottom])
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
+      const atBottom = scrollHeight - scrollTop - clientHeight < 100
+      setIsAtBottom(atBottom)
+    }
+  }
+
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth"
+      })
+      setIsAtBottom(true)
+    }
+  }
 
   const searchParams = useSearchParams()
   const sessionParam = searchParams.get('session')
@@ -159,9 +183,17 @@ function ChatContent() {
     }
   }
 
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+  }
+
   const handleSend = async (overrideInput?: string | React.MouseEvent | React.FormEvent) => {
+    if (isGenerating) return
     const textToSend = typeof overrideInput === "string" ? overrideInput : input
-    if (!textToSend.trim() || isGenerating) return
+    if (!textToSend.trim()) return
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -185,6 +217,9 @@ function ChatContent() {
     setIsGenerating(true)
     setSuggestions([])
 
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     try {
       const response = await fetch("/api/v1/chat/stream", {
         method: "POST",
@@ -196,6 +231,7 @@ function ChatContent() {
           ...(sessionId ? { session_id: sessionId } : {}),
           ...(selectedDocs.length > 0 ? { document_ids: selectedDocs.map(d => d.document_id) } : {})
         }),
+        signal: abortController.signal
       })
 
       if (!response.ok) {
@@ -309,16 +345,27 @@ function ChatContent() {
         }
       }
     } catch (error: any) {
-      console.error("Chat error:", error)
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === assistantMessageId
-            ? { ...msg, status: "error", content: error.message || "An error occurred." }
-            : msg
+      if (error.name === "AbortError") {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, status: "done", content: msg.content || "_Generation stopped by user._" }
+              : msg
+          )
         )
-      )
+      } else {
+        console.error("Chat error:", error)
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? { ...msg, status: "error", content: error.message || "An error occurred." }
+              : msg
+          )
+        )
+      }
     } finally {
       setIsGenerating(false)
+      abortControllerRef.current = null
       // Safety net: if the connection dropped cleanly but didn't finish, mark it as error
       setMessages((prev) =>
         prev.map((msg) =>
@@ -333,7 +380,9 @@ function ChatContent() {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      if (!isGenerating) {
+        handleSend()
+      }
     }
   }
 
@@ -368,7 +417,7 @@ function ChatContent() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6" ref={scrollRef} onScroll={handleScroll}>
         <div className="max-w-3xl mx-auto space-y-6 pb-24">
           <AnimatePresence initial={false}>
           {messages.length === 0 ? (
@@ -378,8 +427,13 @@ function ChatContent() {
               exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
               className="flex flex-col items-center justify-center h-[50vh] text-center text-muted-foreground space-y-4"
             >
-              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center shadow-inner">
-                <Bot className="h-8 w-8 text-primary" />
+              <div className="relative h-20 w-20 rounded-full bg-primary/5 flex items-center justify-center shadow-inner overflow-hidden border border-primary/20">
+                <motion.div 
+                  animate={{ rotate: 360 }} 
+                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 bg-[conic-gradient(from_0deg,transparent_0_340deg,rgba(var(--primary),0.3)_360deg)] opacity-50"
+                />
+                <Bot className="h-10 w-10 text-primary relative z-10 drop-shadow-md" />
               </div>
               <div className="mb-6">
                 <p className="text-xl font-medium text-foreground mb-1">How can I help you today?</p>
@@ -393,19 +447,22 @@ function ChatContent() {
                   ))
                 ) : (
                   (initialSuggestions.length > 0 ? initialSuggestions : [
-                    "What can you help me with?",
-                    "How do I upload my documents?",
-                    "Can you summarize my notes?",
-                    "What topics are covered in my files?"
+                    "Summarize my notes",
+                    "Compare two documents",
+                    "Find important topics",
+                    "Explain difficult concepts"
                   ]).map((query, i) => (
                     <button 
                       key={i} 
                       onClick={() => {
                         setInput(query);
                       }}
-                      className="text-left px-4 py-3 rounded-2xl bg-card border border-border/50 hover:border-primary/50 hover:bg-primary/5 hover:text-primary hover:shadow-md transition-all text-sm shadow-sm group"
+                      className="text-left px-5 py-4 rounded-2xl bg-card border border-border/50 hover:border-primary/40 hover:bg-gradient-to-br hover:from-primary/5 hover:to-transparent hover:shadow-lg transition-all duration-300 text-sm shadow-sm group relative overflow-hidden"
                     >
-                      <span className="text-foreground group-hover:text-primary transition-colors">{query}</span>
+                      <span className="text-foreground font-medium group-hover:text-primary transition-colors relative z-10">{query}</span>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                        <Send className="h-4 w-4 text-primary" />
+                      </div>
                     </button>
                   ))
                 )}
@@ -415,6 +472,7 @@ function ChatContent() {
             messages.map((message) => (
               <motion.div
                 key={message.id}
+                layout
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -450,43 +508,48 @@ function ChatContent() {
                         ) : (
                           <>
                             {/* Live Heartbeat during generation */}
-                            {message.status === "generating" && message.agentStatuses && message.agentStatuses.length > 0 && (
+                            {message.status === "generating" && (
                               <div className="text-[11px] mb-4 border rounded-lg bg-card overflow-hidden font-mono">
                                 <div className="p-3 bg-muted/10 space-y-2">
-                                  {message.agentStatuses?.map((s, i) => (
-                                    <motion.div 
-                                      key={i} 
-                                      initial={{ opacity: 0, x: -5 }} 
-                                      animate={{ opacity: 1, x: 0 }}
-                                      className={cn("flex items-start gap-2", 
-                                        s.status === "warning" ? "text-orange-500" : 
-                                        s.status === "error" ? "text-destructive" : 
-                                        s.status === "success" ? "text-green-500" : 
-                                        "text-muted-foreground"
-                                      )}
-                                    >
-                                      {i === (message.agentStatuses?.length || 0) - 1 && s.status !== "success" && s.status !== "error" ? (
-                                        <Loader2 className="w-3 h-3 animate-spin shrink-0 mt-0.5" />
-                                      ) : (
-                                        <div className="w-3 h-3 flex items-center justify-center shrink-0 mt-0.5">
-                                          <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
-                                        </div>
-                                      )}
-                                      {(() => {
-                                        let text = s.message
-                                        const isDone = i < (message.agentStatuses?.length || 0) - 1 || message.status !== "generating"
-                                        if (isDone) {
-                                          text = text.replace("Searching documents...", "Searched documents")
-                                            .replace("Drafting response...", "Drafted response")
-                                            .replace("Critic evaluating draft...", "Critic evaluated draft")
-                                        }
-                                        return <span className="flex-1">{text}</span>
-                                      })()}
-                                    </motion.div>
-                                  ))}
-                                  {(!message.agentStatuses || message.agentStatuses.length === 0) && (
-                                    <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
-                                      <Loader2 className="w-3 h-3 animate-spin" /> <span>Initializing pipeline...</span>
+                                  {message.agentStatuses && message.agentStatuses.length > 0 ? (
+                                    message.agentStatuses.map((s, i) => (
+                                      <motion.div 
+                                        key={i} 
+                                        initial={{ opacity: 0, x: -5 }} 
+                                        animate={{ opacity: 1, x: 0 }}
+                                        className={cn("flex items-start gap-2", 
+                                          s.status === "warning" ? "text-orange-500" : 
+                                          s.status === "error" ? "text-destructive" : 
+                                          s.status === "success" ? "text-green-500" : 
+                                          "text-muted-foreground"
+                                        )}
+                                      >
+                                        {i === message.agentStatuses!.length - 1 && s.status !== "success" && s.status !== "error" ? (
+                                          <Loader2 className="w-3 h-3 animate-spin shrink-0 mt-0.5" />
+                                        ) : (
+                                          <div className="w-3 h-3 flex items-center justify-center shrink-0 mt-0.5">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50" />
+                                          </div>
+                                        )}
+                                        {(() => {
+                                          let text = s.message
+                                          const isDone = i < message.agentStatuses!.length - 1 || message.status !== "generating"
+                                          if (isDone) {
+                                            text = text.replace("Searching documents...", "Searched documents")
+                                              .replace("Drafting response...", "Drafted response")
+                                              .replace("Critic evaluating draft...", "Critic evaluated draft")
+                                          }
+                                          return <span className="flex-1">{text}</span>
+                                        })()}
+                                      </motion.div>
+                                    ))
+                                  ) : (
+                                    <div className="flex items-center gap-3 text-primary/80">
+                                      <div className="relative flex h-3 w-3">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary/60 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                                      </div>
+                                      <span className="animate-pulse font-medium text-sm tracking-wide">Thinking...</span>
                                     </div>
                                   )}
                                 </div>
@@ -539,9 +602,14 @@ function ChatContent() {
                                         }
                                       } else if (trace.decision === 'rewrite') {
                                         text = "Decided to retry formulation."
+                                      } else if (trace.decision === 'web_search') {
+                                        text = "Decided to fallback to web search."
                                       } else {
                                         text = `Decision: ${trace.decision}`
                                       }
+                                    } else if (trace.node === 'web_search') {
+                                      icon = <Search className="w-3 h-3 text-cyan-500" />
+                                      text = "Searched the web for additional context."
                                     }
 
                                     return (
@@ -646,7 +714,7 @@ function ChatContent() {
                         </span>
                       )}
                       
-                      {message.metadata.response_type === "GROUNDED" && message.metadata.sources && message.metadata.sources.length > 0 && (
+                      {message.metadata.response_type === "GROUNDED" && message.metadata.sources && message.metadata.sources.length > 0 && expandedSources[message.id] && (
                         <div className="w-full mt-2">
                           <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center">
                             <FileText className="h-3 w-3 mr-1" /> Sources
@@ -738,6 +806,19 @@ function ChatContent() {
                       <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md">
                         <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
                       </Button>
+                      {message.metadata?.sources && message.metadata.sources.length > 0 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className={cn("h-6 px-2 text-[10px] rounded-md transition-colors", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary")}
+                          onClick={() => setExpandedSources(prev => ({...prev, [message.id]: !prev[message.id]}))}
+                        >
+                          <FileText className="h-3 w-3 mr-1" /> {expandedSources[message.id] ? "Hide Sources" : "View Sources"}
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md" onClick={() => router.push('/trace')}>
+                        <Activity className="h-3 w-3 mr-1" /> Verification Log
+                      </Button>
                       <div className="flex items-center gap-0 border rounded-md overflow-hidden bg-background ml-1">
                         <Button variant="ghost" size="icon" className="h-6 w-7 rounded-none text-muted-foreground hover:text-green-600 hover:bg-green-500/10" title="Good response">
                           <ThumbsUp className="h-3 w-3" />
@@ -786,6 +867,25 @@ function ChatContent() {
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-10 pb-4 px-4 sm:px-6 z-20">
+        <AnimatePresence>
+          {!isAtBottom && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="absolute -top-6 left-1/2 -translate-x-1/2 z-30"
+            >
+              <Button
+                variant="outline"
+                size="icon"
+                className="rounded-full shadow-lg h-8 w-8 bg-background border-primary/20 text-foreground hover:bg-muted"
+                onClick={scrollToBottom}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <motion.div 
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -838,14 +938,16 @@ function ChatContent() {
             
             <Popover open={mentionOpen} onOpenChange={setMentionOpen}>
               <PopoverTrigger render={<div className="flex-1 relative" />} nativeButton={false}>
-                  <Textarea
+                  <TextareaAutosize
                     value={input}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Ask a question... (type @ to search specific documents)"
-                    className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full"
-                    rows={1}
-                    disabled={isGenerating}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    placeholder="Ask anything about your documents..."
+                    className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full outline-none text-sm"
+                    minRows={1}
+                    maxRows={5}
                   />
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0" align="start" sideOffset={10}>
@@ -871,20 +973,40 @@ function ChatContent() {
               </PopoverContent>
             </Popover>
 
-            <Button
-              size="icon"
-              className="shrink-0 rounded-xl h-10 w-10 mb-1 mr-1"
-              disabled={!input.trim() || isGenerating}
-              onClick={handleSend}
-            >
-              {isGenerating ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
+            {isGenerating ? (
+              <Button
+                size="icon"
+                variant="destructive"
+                className="shrink-0 rounded-xl h-10 w-10 mb-1 mr-1 shadow-md hover:shadow-lg transition-shadow"
+                onClick={handleStop}
+              >
+                <Square className="h-4 w-4 fill-current" />
+                <span className="sr-only">Stop generating</span>
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                className="shrink-0 rounded-xl h-10 w-10 mb-1 mr-1 shadow-md hover:shadow-lg transition-shadow"
+                disabled={!input.trim()}
+                onClick={handleSend}
+              >
                 <Send className="h-4 w-4" />
-              )}
-              <span className="sr-only">Send message</span>
-            </Button>
+                <span className="sr-only">Send message</span>
+              </Button>
+            )}
           </div>
+          <AnimatePresence>
+            {isFocused && (
+              <motion.div
+                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                animate={{ opacity: 1, height: "auto", marginTop: -4 }}
+                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                className="px-4 pb-2 text-[10.5px] text-muted-foreground/70 overflow-hidden"
+              >
+                Tip: Type @ to search within a specific document.
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       </div>
     </div>
