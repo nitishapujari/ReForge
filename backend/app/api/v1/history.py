@@ -58,6 +58,20 @@ import json
 
 def get_message_metadata_with_fallback(msg) -> dict:
     meta = msg.message_metadata or {}
+    
+    # Extract trace data
+    trace_data = msg.trace_data
+    if isinstance(trace_data, str):
+        try:
+            trace_data = json.loads(trace_data)
+        except Exception:
+            pass
+            
+    # Always inject trace data for frontend rendering if it exists
+    if trace_data and isinstance(trace_data, list):
+        meta["trace_data"] = trace_data
+        meta["trace_available"] = True
+
     if meta and "sources" in meta and meta["sources"]:
         return meta
         
@@ -150,6 +164,11 @@ def get_message_metadata_with_fallback(msg) -> dict:
                         new_meta["verification_status"] = "VERIFIED"
                 except Exception:
                     pass
+                    
+    # Inject trace data for frontend rendering
+    if trace_data:
+        new_meta["trace_data"] = trace_data
+        new_meta["trace_available"] = True
                     
     return new_meta
 

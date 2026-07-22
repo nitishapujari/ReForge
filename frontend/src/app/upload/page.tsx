@@ -54,10 +54,20 @@ export default function UploadPage() {
     
     const isValidType = selectedFile.type === "application/pdf" || 
                         selectedFile.type === "text/plain" ||
+                        selectedFile.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                        selectedFile.type === "text/csv" ||
+                        selectedFile.type === "text/markdown" ||
+                        selectedFile.type === "image/png" ||
+                        selectedFile.type === "image/jpeg" ||
                         selectedFile.name.endsWith(".pdf") ||
-                        selectedFile.name.endsWith(".txt")
+                        selectedFile.name.endsWith(".txt") ||
+                        selectedFile.name.endsWith(".docx") ||
+                        selectedFile.name.endsWith(".csv") ||
+                        selectedFile.name.endsWith(".md") ||
+                        selectedFile.name.endsWith(".png") ||
+                        selectedFile.name.endsWith(".jpg")
                         
-    if (!isValidType) return "Invalid file type. Please upload a .pdf or .txt file."
+    if (!isValidType) return "Invalid file type. Please upload a PDF, TXT, DOCX, CSV, MD, PNG, or JPG file."
     
     if (selectedFile.size > 20 * 1024 * 1024) return "File is too large. Maximum size is 20MB."
     
@@ -281,7 +291,7 @@ export default function UploadPage() {
     <div className="flex-1 p-6 flex flex-col items-center min-h-[calc(100vh-3rem)]">
       <div className="w-full max-w-3xl mb-6">
         <h1 className="text-3xl font-bold tracking-tight mb-2">Upload Documents</h1>
-        <p className="text-muted-foreground">Select multiple PDF or TXT files to add to your documents.</p>
+        <p className="text-muted-foreground">Select multiple files (PDF, TXT, DOCX, CSV, MD, Images) to add to your documents.</p>
       </div>
 
       <motion.div 
@@ -298,7 +308,7 @@ export default function UploadPage() {
           <UploadCloud className="w-8 h-8 text-primary" />
         </div>
         <h3 className="text-lg font-semibold mb-1">Click or drag files to upload</h3>
-        <p className="text-sm text-muted-foreground mb-4">Supported formats: PDF, TXT (Max 20MB per file)</p>
+        <p className="text-sm text-muted-foreground mb-4">Supported formats: PDF, TXT, DOCX, CSV, MD, PNG, JPG (Max 20MB per file)</p>
         <Button variant="outline" type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>
           Browse Files
         </Button>
@@ -307,7 +317,7 @@ export default function UploadPage() {
           multiple
           ref={fileInputRef} 
           className="hidden" 
-          accept=".pdf,.txt,application/pdf,text/plain"
+          accept=".pdf,.txt,.docx,.csv,.md,.png,.jpg,application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/csv,text/markdown,image/png,image/jpeg"
           onChange={(e) => {
             if (e.target.files && e.target.files.length > 0) {
               handleFilesSelect(e.target.files)

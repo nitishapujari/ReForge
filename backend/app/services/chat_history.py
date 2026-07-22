@@ -276,12 +276,24 @@ async def get_session_traces(db: AsyncSession, session_id: str) -> list[dict]:
     result = await db.execute(stmt)
     messages = result.scalars().all()
 
-    return [
-        {
-            "message_id": msg.id,
-            "timestamp": msg.timestamp,
-            "trace_data": msg.trace_data,
-        }
-        for msg in messages
-        if msg.trace_data is not None and len(msg.trace_data) > 0
-    ]
+    result_traces = []
+    for msg in messages:
+        if not msg.trace_data:
+            continue
+            
+        import json
+        trace_data = msg.trace_data
+        if isinstance(trace_data, str):
+            try:
+                trace_data = json.loads(trace_data)
+            except Exception:
+                continue
+                
+        if trace_data and isinstance(trace_data, list) and len(trace_data) > 0:
+            result_traces.append({
+                "message_id": msg.id,
+                "timestamp": msg.timestamp,
+                "trace_data": trace_data,
+            })
+
+    return result_traces

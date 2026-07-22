@@ -172,7 +172,7 @@ export default function KnowledgeBasePage() {
           </div>
           <h2 className="text-xl font-semibold mb-2">No documents found</h2>
           <p className="text-muted-foreground mb-6 max-w-sm">
-            You haven't uploaded any documents yet. Upload some PDF or TXT files to give ReForge context for your questions.
+            You haven't uploaded any documents yet. Upload some PDF, TXT, DOCX, CSV, MD, or Image files to give ReForge context for your questions.
           </p>
           <Link href="/upload">
             <Button size="lg">Go to Upload Page</Button>

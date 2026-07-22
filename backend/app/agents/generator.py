@@ -50,10 +50,12 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     scores = state.get("similarity_scores", [])
     attempt = state.get("attempts", 1)
 
+    web_context_list = state.get("web_context", [])
+    
     # Handle empty retrieval results
-    if not docs:
+    if not docs and not web_context_list:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
-        logger.info("No retrieved docs — falling back to general knowledge")
+        logger.info("No retrieved docs and no web context — falling back to general knowledge")
 
         trace_entry = TraceEntry(
             node="generate",
@@ -220,10 +222,10 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
 
     grouped_sources = flat_sources
 
-    if not grouped_sources:
+    if not grouped_sources and not web_context_list:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         logger.info(
-            "No docs passed filters (best=%.2f, absolute=%.2f) — fallback",
+            "No docs passed filters (best=%.2f, absolute=%.2f) and no web context — fallback",
             best_doc_score,
             RELEVANCE_THRESHOLD,
         )
@@ -271,6 +273,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
 
     # context_parts is already built above alongside grouped_sources
     context = "\n\n---\n\n".join(context_parts)
+    
+    web_context_list = state.get("web_context", [])
+    web_context = "\n\n---\n\n".join(web_context_list) if web_context_list else "No web search context available."
 
     # Build prompt and call LLM
     chat_history = state.get("chat_history", [])
@@ -279,6 +284,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     user_prompt = GENERATOR_USER_PROMPT.format(
         history=history_str,
         context=context,
+        web_context=web_context,
         question=question,
     )
 
@@ -286,7 +292,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         "Generating answer: question='%s', context_docs=%d, best_score=%.4f",
         question[:80],
         len(grouped_sources),
-        grouped_sources[0].document_score,
+        grouped_sources[0].document_score if grouped_sources else 0.0,
     )
 
     if stream_callback:
@@ -309,6 +315,22 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
 
     # Use all grouped sources that passed the relevance threshold
     sources = grouped_sources
+    
+    web_sources_list = state.get("web_sources", [])
+    for ws in web_sources_list:
+        web_src = SourceDocument(
+            filename=ws["url"],
+            document_score=1.0,
+            chunks=[
+                ChunkPreview(
+                    chunk_number=None,
+                    page_number=None,
+                    content_preview=ws["snippet"][:200] + ("..." if len(ws["snippet"]) > 200 else ""),
+                    similarity_score=1.0
+                )
+            ]
+        )
+        sources.append(web_src)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 

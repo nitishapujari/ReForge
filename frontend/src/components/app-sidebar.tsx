@@ -133,11 +133,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </div>
           ReForge
         </Link>
-        <Link href="/chat">
-          <button className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm border-border bg-background hover:bg-muted text-foreground">
-            <Plus className="w-4 h-4" />
-            New Chat
-          </button>
+        <Link href="/chat" className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm border-border bg-background hover:bg-muted text-foreground">
+          <Plus className="w-4 h-4" />
+          New Chat
         </Link>
       </SidebarHeader>
       <SidebarContent>

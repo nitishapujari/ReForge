@@ -84,6 +84,7 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
       case 'generate': return "Generating Draft"
       case 'critique': return "Verifying Response"
       case 'rewrite': return "Rewriting Search Query"
+      case 'web_search': return "Live Web Search"
       case 'router': return "Initial Routing"
       default: return entry.node
     }
@@ -95,6 +96,7 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
       case 'generate': return <Edit3 className="w-4 h-4 text-purple-500" />
       case 'critique': return <ShieldCheck className="w-4 h-4 text-green-600" />
       case 'rewrite': return <RotateCcw className="w-4 h-4 text-orange-500" />
+      case 'web_search': return <Search className="w-4 h-4 text-blue-500" />
       default: return <Activity className="w-4 h-4" />
     }
   }
@@ -170,6 +172,14 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* WEB SEARCH NODE */}
+              {entry.node === 'web_search' && parsedOutput && (
+                <div className="bg-muted/30 p-4 rounded-lg border border-border/50 md:col-span-2 space-y-3">
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><Search className="w-3 h-3"/> Web Search Results</p>
+                  <p className="font-medium text-foreground text-sm">{parsedOutput.results_found || 0} sources found on the live web</p>
+                </div>
               )}
 
               {/* GENERATE NODE */}

@@ -33,8 +33,9 @@ def init_vectorstore(persist_dir: str, collection_name: str) -> None:
         model_name=EMBEDDING_MODEL,
     )
 
-    _client = chromadb.PersistentClient(
-        path=persist_dir,
+    _client = chromadb.HttpClient(
+        host="localhost",
+        port=8001,
         settings=chromadb.config.Settings(anonymized_telemetry=False)
     )
 

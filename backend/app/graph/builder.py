@@ -28,6 +28,7 @@ from app.agents.decision import decision_node
 from app.agents.generator import generate_node
 from app.agents.retrieval import retrieve_node
 from app.agents.rewrite import rewrite_node
+from app.agents.web_search import web_search_node
 from app.constants import DEFAULT_TOP_K, MAX_RETRIES
 from app.graph.state import GraphState
 from app.utils.logger import get_logger
@@ -63,6 +64,9 @@ def route_decision(state: GraphState) -> str:
     elif decision == "rewrite":
         logger.info("Decision: REWRITE — rephrasing query")
         return "rewrite"
+    elif decision == "web_search":
+        logger.info("Decision: WEB_SEARCH — falling back to live internet search")
+        return "web_search"
     else:
         logger.warning("Unknown decision '%s' — defaulting to END", decision)
         return END
@@ -88,6 +92,7 @@ def build_graph() -> StateGraph:
     graph.add_node("critique", critique_node)
     graph.add_node("decision", decision_node)
     graph.add_node("rewrite", rewrite_node)
+    graph.add_node("web_search", web_search_node)
 
     # --- Define edges ---
     # Entry point
@@ -106,11 +111,15 @@ def build_graph() -> StateGraph:
             END: END,
             "retrieve": "retrieve",
             "rewrite": "rewrite",
+            "web_search": "web_search",
         },
     )
 
     # Rewrite loops back to retrieve
     graph.add_edge("rewrite", "retrieve")
+    
+    # Web search routes back to generate
+    graph.add_edge("web_search", "generate")
 
     logger.info("Self-healing RAG graph built successfully")
     return graph

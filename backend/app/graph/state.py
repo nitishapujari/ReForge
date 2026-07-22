@@ -43,6 +43,8 @@ class GraphState(TypedDict):
     retrieved_metadatas: list[dict]
     similarity_scores: list[float]
     top_k: int
+    web_context: list[str] | None
+    web_sources: list[dict] | None
 
     # --- Generator node ---
     answer: str | None

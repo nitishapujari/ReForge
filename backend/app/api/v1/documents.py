@@ -7,6 +7,8 @@ Document processing runs in the background via FastAPI BackgroundTasks.
 
 import asyncio
 import hashlib
+import os
+import uuid
 from fastapi import (
     APIRouter,
     BackgroundTasks,
@@ -25,132 +27,18 @@ from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
 from app.services import document_processor, vectorstore
 from app.utils.logger import get_logger
+from app.worker import process_and_ingest_document_task, replace_document_task
 from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 
+TEMP_DOCS_DIR = "storage/temp_docs"
+os.makedirs(TEMP_DOCS_DIR, exist_ok=True)
+
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
-async def _process_and_ingest_document(
-    document_id: str,
-    user_id: str,
-    filename: str,
-    file_content: bytes,
-    file_hash: str | None,
-) -> None:
-    """
-    Background task: process document (chunking) and add to vector store.
-    Updates SQLite status upon completion or failure.
-    """
-    factory = get_session_factory()
-    try:
-        # Process document in a separate thread
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=document_id,
-            user_id=user_id,
-            filename=filename,
-            file_content=file_content,
-            file_hash=file_hash,
-        )
-        
-        # Run vector store insertion in a separate thread to prevent blocking the event loop
-        await asyncio.to_thread(
-            vectorstore.add_documents,
-            ids=chunk_ids,
-            documents=chunk_texts,
-            metadatas=chunk_metadatas,
-        )
-        logger.info(
-            "Background ingestion complete: document_id=%s, chunks=%d",
-            document_id,
-            len(chunk_ids),
-        )
-        
-        # Update SQLite status
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.status = "completed"
-                doc.chunk_count = len(chunk_ids)
-                await session.commit()
-                
-    except Exception as e:
-        logger.error(
-            "Background ingestion failed for document_id=%s: %s",
-            document_id,
-            str(e),
-        )
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.status = "failed"
-                doc.error_message = str(e)
-                await session.commit()
 
-
-async def _replace_document(
-    document_id: str,
-    user_id: str,
-    filename: str,
-    file_content: bytes,
-    file_hash: str | None,
-) -> None:
-    """
-    Background task: replace an existing document's vectors and update SQLite.
-    """
-    factory = get_session_factory()
-    try:
-        # Process new document
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=document_id,
-            user_id=user_id,
-            filename=filename,
-            file_content=file_content,
-            file_hash=file_hash,
-        )
-        
-        # Delete old vectors
-        await asyncio.to_thread(vectorstore.delete_by_document_id, document_id)
-        
-        # Add new vectors
-        await asyncio.to_thread(
-            vectorstore.add_documents,
-            ids=chunk_ids,
-            documents=chunk_texts,
-            metadatas=chunk_metadatas,
-        )
-        
-        logger.info(
-            "Background replacement complete: document_id=%s, new_chunks=%d",
-            document_id,
-            len(chunk_ids),
-        )
-        
-        # Update SQLite
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.filename = filename
-                doc.file_hash = file_hash
-                doc.status = "completed"
-                doc.chunk_count = len(chunk_ids)
-                await session.commit()
-                
-    except Exception as e:
-        logger.error(
-            "Background replacement failed for document_id=%s: %s",
-            document_id,
-            str(e),
-        )
-        async with factory() as session:
-            doc = await session.get(Document, document_id)
-            if doc:
-                doc.status = "failed"
-                doc.error_message = str(e)
-                await session.commit()
 
 
 @router.post(
@@ -213,13 +101,17 @@ async def upload_document(
     await db.commit()
     await db.refresh(new_doc)
 
-    # Queue background processing and ingestion
-    background_tasks.add_task(
-        _process_and_ingest_document,
+    # Save file temporarily for the worker
+    temp_file_path = os.path.join(TEMP_DOCS_DIR, f"{new_doc.id}_{uuid.uuid4().hex[:8]}")
+    with open(temp_file_path, "wb") as f:
+        f.write(file_content)
+
+    # Queue background processing and ingestion in Huey
+    process_and_ingest_document_task(
         document_id=new_doc.id,
         user_id=current_user.id,
         filename=file.filename,
-        file_content=file_content,
+        file_path=temp_file_path,
         file_hash=file_hash,
     )
 
@@ -267,12 +159,16 @@ async def replace_document(
     doc.status = "processing"
     await db.commit()
 
-    background_tasks.add_task(
-        _replace_document,
+    # Save file temporarily for the worker
+    temp_file_path = os.path.join(TEMP_DOCS_DIR, f"{document_id}_{uuid.uuid4().hex[:8]}")
+    with open(temp_file_path, "wb") as f:
+        f.write(file_content)
+
+    replace_document_task(
         document_id=document_id,
         user_id=current_user.id,
         filename=file.filename,
-        file_content=file_content,
+        file_path=temp_file_path,
         file_hash=file_hash,
     )
 

@@ -1,17 +1,23 @@
 """
 ReForge — Document Processor Service.
 
-Handles file parsing (PDF, TXT) and text chunking with rich metadata.
-Each chunk is tagged with document_id, filename, page_number,
-chunk_number, and created_at for source attribution.
+Handles file parsing (PDF, TXT, DOCX, CSV, MD, Images) and text chunking with rich metadata.
+Includes OCR fallback for scanned PDFs and semantic chunking.
 """
 
+import io
 import uuid
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
+import fitz  # PyMuPDF
+import docx
+import pandas as pd
+import pytesseract
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 from app.constants import (
     ALLOWED_EXTENSIONS,
@@ -26,21 +32,10 @@ logger = get_logger(__name__)
 
 class DocumentProcessingError(Exception):
     """Raised when document processing fails."""
-
     pass
 
 
 def validate_file(filename: str, file_size: int) -> None:
-    """
-    Validate file extension and size.
-
-    Args:
-        filename: Original filename.
-        file_size: File size in bytes.
-
-    Raises:
-        DocumentProcessingError: If validation fails.
-    """
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise DocumentProcessingError(
@@ -57,7 +52,6 @@ def validate_file(filename: str, file_size: int) -> None:
 
 
 def _parse_pdf_pypdf(file_content: bytes) -> list[dict[str, str | int]]:
-    import io
     reader = PdfReader(io.BytesIO(file_content))
     pages = []
     for i, page in enumerate(reader.pages, start=1):
@@ -68,7 +62,6 @@ def _parse_pdf_pypdf(file_content: bytes) -> list[dict[str, str | int]]:
 
 
 def _parse_pdf_pymupdf(file_content: bytes) -> list[dict[str, str | int]]:
-    import fitz
     doc = fitz.open(stream=file_content, filetype="pdf")
     pages = []
     for i, page in enumerate(doc, start=1):
@@ -79,19 +72,30 @@ def _parse_pdf_pymupdf(file_content: bytes) -> list[dict[str, str | int]]:
     return pages
 
 
+def _parse_pdf_ocr(file_content: bytes) -> list[dict[str, str | int]]:
+    """Fallback OCR parser for scanned PDFs using pdf2image and pytesseract."""
+    try:
+        images = convert_from_bytes(file_content)
+        pages = []
+        for i, img in enumerate(images, start=1):
+            text = pytesseract.image_to_string(img)
+            if text and text.strip():
+                pages.append({"text": text.strip(), "page_number": i})
+        return pages
+    except Exception as e:
+        logger.warning(f"OCR parsing failed: {e}")
+        return []
+
+
 def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
-    """
-    Extract text from a PDF file using a chain of parsers.
-    Falls back to subsequent parsers if the current one returns 0 pages.
-    """
     parsers = [
         ("pypdf", _parse_pdf_pypdf),
         ("PyMuPDF", _parse_pdf_pymupdf),
+        ("OCR", _parse_pdf_ocr),
     ]
 
     for i, (name, parser_func) in enumerate(parsers):
         logger.info("Using parser: %s", name)
-        
         try:
             pages = parser_func(file_content)
         except Exception as e:
@@ -100,31 +104,20 @@ def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
             
         if pages:
             logger.info("%s extracted %d pages", name, len(pages))
-            logger.info("Selected parser: %s", name)
             return pages
             
         logger.info("%s extracted 0 pages", name)
         
         if i < len(parsers) - 1:
-            next_name = parsers[i + 1][0]
-            logger.info("Falling back to %s", next_name)
+            logger.info("Falling back to next parser")
 
     raise DocumentProcessingError(
         "Could not extract any text from the PDF. "
-        "The file may be image-based or empty."
+        "The file may be corrupted or unreadable."
     )
 
 
 def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
-    """
-    Extract text from a plain text file.
-
-    Args:
-        file_content: Raw text bytes.
-
-    Returns:
-        List with single dict containing all text (page_number=1).
-    """
     try:
         text = file_content.decode("utf-8")
     except UnicodeDecodeError:
@@ -137,6 +130,88 @@ def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
     return [{"text": text, "page_number": 1}]
 
 
+def extract_text_from_docx(file_content: bytes) -> list[dict[str, str | int]]:
+    try:
+        doc = docx.Document(io.BytesIO(file_content))
+        text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        if not text:
+            raise DocumentProcessingError("The docx file is empty.")
+        return [{"text": text, "page_number": 1}]
+    except Exception as e:
+        raise DocumentProcessingError(f"Failed to parse docx: {e}")
+
+
+def extract_text_from_csv(file_content: bytes) -> list[dict[str, str | int]]:
+    try:
+        df = pd.read_csv(io.BytesIO(file_content))
+        # Convert CSV rows to readable text
+        text = df.to_string(index=False)
+        if not text.strip():
+            raise DocumentProcessingError("The csv file is empty.")
+        return [{"text": text, "page_number": 1}]
+    except Exception as e:
+        raise DocumentProcessingError(f"Failed to parse csv: {e}")
+
+
+def extract_text_from_md(file_content: bytes) -> list[dict[str, str | int]]:
+    # Markdown is essentially text, just decode it.
+    return extract_text_from_txt(file_content)
+
+
+def extract_text_from_image(file_content: bytes) -> list[dict[str, str | int]]:
+    try:
+        img = Image.open(io.BytesIO(file_content))
+        text = pytesseract.image_to_string(img)
+        if not text.strip():
+            raise DocumentProcessingError("Could not extract any text from the image.")
+        return [{"text": text.strip(), "page_number": 1}]
+    except Exception as e:
+        raise DocumentProcessingError(f"Failed to parse image via OCR: {e}")
+
+
+def _semantic_chunk_text(text: str) -> list[str]:
+    """
+    Simple Semantic Chunker:
+    Splits by double newline (paragraphs), and merges small paragraphs
+    until they reach a reasonable CHUNK_SIZE. This preserves semantic meaning
+    better than arbitrary character splits.
+    """
+    paragraphs = re.split(r'\n\s*\n', text)
+    chunks = []
+    current_chunk = ""
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+            
+        if len(current_chunk) + len(para) <= CHUNK_SIZE:
+            current_chunk += ("\n\n" + para if current_chunk else para)
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            # If a single paragraph is larger than CHUNK_SIZE, we have to hard-split it
+            if len(para) > CHUNK_SIZE:
+                # hard split
+                words = para.split(' ')
+                sub_chunk = ""
+                for word in words:
+                    if len(sub_chunk) + len(word) + 1 <= CHUNK_SIZE:
+                        sub_chunk += (" " + word if sub_chunk else word)
+                    else:
+                        chunks.append(sub_chunk)
+                        sub_chunk = word
+                if sub_chunk:
+                    current_chunk = sub_chunk
+            else:
+                current_chunk = para
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    return chunks
+
+
 def process_document(
     document_id: str,
     user_id: str,
@@ -144,41 +219,25 @@ def process_document(
     file_content: bytes,
     file_hash: str | None = None,
 ) -> tuple[str, list[str], list[str], list[dict]]:
-    """
-    Process a document: extract text, chunk it, and prepare metadata.
-
-    Args:
-        document_id: Pre-generated UUID for the document.
-        filename: Original filename.
-        file_content: Raw file bytes.
-        file_hash: SHA-256 hash of the file.
-
-    Returns:
-        Tuple of (document_id, chunk_ids, chunk_texts, chunk_metadatas).
-    """
-    # Validate
     validate_file(filename, len(file_content))
-
     created_at = datetime.now(timezone.utc).isoformat()
-
-    # Extract text based on file type
     ext = Path(filename).suffix.lower()
+
     if ext == ".pdf":
         pages = extract_text_from_pdf(file_content)
     elif ext == ".txt":
         pages = extract_text_from_txt(file_content)
+    elif ext == ".docx":
+        pages = extract_text_from_docx(file_content)
+    elif ext == ".csv":
+        pages = extract_text_from_csv(file_content)
+    elif ext == ".md":
+        pages = extract_text_from_md(file_content)
+    elif ext in [".png", ".jpg"]:
+        pages = extract_text_from_image(file_content)
     else:
         raise DocumentProcessingError(f"Unsupported file type: {ext}")
 
-    # Initialize the text splitter
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=CHUNK_SIZE,
-        chunk_overlap=CHUNK_OVERLAP,
-        length_function=len,
-        separators=["\n\n", "\n", ". ", " ", ""],
-    )
-
-    # Chunk each page and build metadata
     chunk_ids: list[str] = []
     chunk_texts: list[str] = []
     chunk_metadatas: list[dict] = []
@@ -188,7 +247,8 @@ def process_document(
         page_text = page_data["text"]
         page_number = page_data["page_number"]
 
-        chunks = splitter.split_text(page_text)
+        # Use our new semantic chunker instead of RecursiveCharacterTextSplitter
+        chunks = _semantic_chunk_text(page_text)
 
         for chunk_text in chunks:
             chunk_counter += 1

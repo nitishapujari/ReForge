@@ -1,0 +1,16 @@
+@echo off
+echo Starting ReForge...
+
+echo Starting Frontend...
+start cmd /k "cd frontend && npm run dev"
+
+echo Starting Vector Database...
+start cmd /k "cd backend && call venv\Scripts\activate && chroma run --path storage/chromadb --port 8001"
+
+echo Starting Backend API...
+start cmd /k "cd backend && call venv\Scripts\activate && uvicorn app.main:app --reload"
+
+echo Starting Background Worker...
+start cmd /k "cd backend && call venv\Scripts\activate && huey_consumer app.worker.huey"
+
+echo All services started! You can access the app at http://localhost:3000

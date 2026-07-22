@@ -54,14 +54,30 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         decision = "accept"
     elif attempts >= max_attempts:
         logger.warning("Max attempts reached (%d). Failing or accepting best effort.", max_attempts)
+        has_web_context = "web_context" in state and state["web_context"] is not None
         if grounded and confidence >= 0.5:
             decision = "accept"
+        elif not has_web_context:
+            decision = "web_search"
         else:
-            decision = "fail"
+            decision = "accept"
     else:
+        # Check if we should fallback to web search because local docs are exhausted/empty
+        docs = state.get("retrieved_docs", [])
+        has_web_context = "web_context" in state and state["web_context"] is not None
+        
+        # If generator gave a fallback answer (skipping critique) and we haven't tried web search
+        is_fallback_answer = (
+            "NO_DOCUMENTS_RESPONSE" in answer or # we can't import this easily but we know it's a fallback if grounded=True but no docs
+            "general knowledge fallback" in state.get("critic_feedback", "")
+        )
+        
         # If there's missing information, we should rewrite the query to try and find it,
         # even if the current answer (e.g., "I don't know") is technically grounded.
-        if missing_information:
+        if (not docs or is_fallback_answer) and not has_web_context:
+            logger.info("No local docs found or fallback generated, routing directly to web search.")
+            decision = "web_search"
+        elif missing_information:
             decision = "rewrite"
         elif not grounded or confidence < CONFIDENCE_THRESHOLD:
             if unsupported_claims:
@@ -101,6 +117,9 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
     
     if decision == "fail":
         output_summary["reason"] = "Maximum retries exhausted without producing a grounded answer."
+    elif decision == "web_search":
+        output_summary["final_action"] = "Web Search Fallback"
+        output_summary["reason"] = "Maximum local retries exhausted without a grounded answer. Falling back to live web search."
     elif decision == "accept":
         if attempts >= max_attempts and missing_information:
              output_summary["reason"] = "Maximum retries exhausted. The draft was accepted as best-effort despite missing information."
@@ -139,6 +158,9 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
     elif decision == "escalate":
         if stream_callback:
             stream_callback({"type": "status", "message": "⚠️ Missing information. Retrieving more documents...", "status": "warning"})
+    elif decision == "web_search":
+        if stream_callback:
+            stream_callback({"type": "status", "message": "⚠️ Missing information. Routing to web search...", "status": "warning"})
     elif decision == "accept":
         updates["final_answer"] = answer
         if stream_callback:
