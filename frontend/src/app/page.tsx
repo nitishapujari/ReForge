@@ -25,7 +25,7 @@ const shortenId = (id: string) => {
 
 function FloatingOrbs() {
   const [mounted, setMounted] = useState(false)
-  const [orbs, setOrbs] = useState<any[]>([])
+  const [orbs, setOrbs] = useState<{left: string, top: string, duration: number, delay: number, yOffset: number, xOffset: number}[]>([])
   const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
