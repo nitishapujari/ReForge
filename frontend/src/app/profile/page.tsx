@@ -8,16 +8,24 @@ import { Separator } from "@/components/ui/separator"
 import { User2, Calendar, Monitor, CheckCircle2 } from "lucide-react"
 
 export default function ProfilePage() {
-  const { user: contextUser } = useUser()
-  const { data: session } = useSession()
+  const { user, isLoading } = useUser()
 
-  const fallbackUser = contextUser
-  const displayName = session?.user?.name || session?.user?.email || fallbackUser?.fullName || "User"
-  const displayId = session?.user?.id || fallbackUser?.id || "Unknown"
-  const initials = displayName.substring(0, 2).toUpperCase()
+  if (isLoading) {
+    return (
+      <div className="flex-1 p-8 max-w-4xl mx-auto w-full flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (!user) return null
+
+  const displayName = user.fullName
+  const displayId = user.id
+  const initials = user.avatarInitials
 
   // Format date safely
-  const joinedDate = new Date(fallbackUser?.createdAt || new Date()).toLocaleDateString('en-US', {
+  const joinedDate = new Date(user.createdAt || new Date()).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'long',
     day: 'numeric'
@@ -67,7 +75,7 @@ export default function ProfilePage() {
                 <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                   <Monitor className="w-4 h-4" /> Theme Preference
                 </p>
-                <p className="text-base font-medium capitalize">{fallbackUser?.themePreference || "system"}</p>
+                <p className="text-base font-medium capitalize">{user.themePreference || "system"}</p>
               </div>
 
               <div className="space-y-1">
@@ -75,7 +83,7 @@ export default function ProfilePage() {
                   <CheckCircle2 className="w-4 h-4" /> Onboarding Status
                 </p>
                 <p className="text-base font-medium">
-                  {fallbackUser?.onboardingCompleted ? "Completed" : "Pending"}
+                  {user.onboardingCompleted ? "Completed" : "Pending"}
                 </p>
               </div>
             </div>

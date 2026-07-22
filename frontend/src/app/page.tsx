@@ -305,7 +305,7 @@ function RagPipelineVisualizer() {
 }
 
 function PersonalizedDashboard() {
-  const { user } = useUser()
+  const { user, isLoading: isUserLoading } = useUser()
   const [docs, setDocs] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -339,6 +339,14 @@ function PersonalizedDashboard() {
     }
   }, [user])
 
+  if (isUserLoading) {
+    return (
+      <div className="flex w-full min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    )
+  }
+  
   if (!user) return null
 
   const recentDocs = docs.slice(0, 3)

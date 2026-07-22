@@ -64,14 +64,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const activeSessionId = searchParams.get('session')
-  const { user: userContextUser } = useUser()
-  const { data: session } = useSession()
-  const user = session?.user || userContextUser
+  const { user } = useUser()
   
-  const displayEmail = session?.user?.email || "No email"
-  const displayName = session?.user?.name || session?.user?.email || userContextUser?.fullName || "User"
-  const displayInitials = session?.user?.email ? session.user.email.substring(0, 2).toUpperCase() : userContextUser?.avatarInitials || "U"
-
+  const displayEmail = user?.id || "No email"
+  const displayName = user?.fullName || "User"
+  const displayInitials = user?.avatarInitials || "U"
   const [chatSessions, setChatSessions] = React.useState<any[]>([])
   const [editingSessionId, setEditingSessionId] = React.useState<string | null>(null)
   const [editTitle, setEditTitle] = React.useState("")

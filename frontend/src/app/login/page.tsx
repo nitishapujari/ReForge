@@ -40,7 +40,7 @@ export default function LoginPage() {
       if (result?.error) {
         setError(result.error);
       } else {
-        router.push("/chat");
+        router.push("/");
         router.refresh();
       }
     } catch (err: any) {
