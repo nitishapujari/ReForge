@@ -130,10 +130,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </div>
           ReForge
         </Link>
-        <Link href="/chat" className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-colors border rounded-md shadow-sm border-border bg-background hover:bg-muted text-foreground">
-          <Plus className="w-4 h-4" />
-          New Chat
-        </Link>
+        <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+          <Link href="/chat" className="group flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-all duration-300 border rounded-md shadow-sm border-border bg-background hover:bg-primary/5 hover:text-primary hover:border-primary/30 hover:shadow-[0_0_10px_rgba(var(--primary),0.1)] text-foreground">
+            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+            New Chat
+          </Link>
+        </motion.div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -147,7 +149,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                     <SidebarMenuButton 
                       onClick={() => router.push(item.url)}
                       isActive={isActive}
-                      className={`relative overflow-hidden z-0 group transition-all duration-300 ${isActive ? 'text-primary' : 'hover:text-foreground text-muted-foreground'}`}
+                      className={`relative overflow-hidden z-0 group transition-all duration-300 hover:bg-muted/50 rounded-md ${isActive ? 'text-primary font-semibold' : 'hover:text-foreground text-muted-foreground'}`}
                     >
                       {isActive && (
                         <motion.div
@@ -159,7 +161,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         />
                       )}
-                      <item.icon className="w-5 h-5 transition-transform group-hover:scale-110" />
+                      <item.icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110 group-hover:text-foreground'}`} />
                       <span className="font-medium">{item.title}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -204,12 +206,15 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                             if (editingSessionId !== chat.id) router.push(`/chat?session=${chat.id}`)
                           }}
                           isActive={pathname === '/chat' && activeSessionId === chat.id}
+                          className="group/chat transition-all duration-300 hover:bg-muted/50 rounded-md"
                         >
-                          <span className="truncate pr-4 flex-1 text-sm">{chat.title || "New Chat"}</span>
+                          <span className="truncate pr-4 flex-1 text-sm group-hover/chat:text-foreground transition-colors duration-300">
+                            {chat.title || "New Chat"}
+                          </span>
                         </SidebarMenuButton>
                         <DropdownMenu>
-                          <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />} onClick={(e) => e.preventDefault()}>
-                            <MoreHorizontal className="w-4 h-4" />
+                          <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />} onClick={(e) => e.preventDefault()} className="hover:bg-muted rounded-md transition-colors">
+                            <MoreHorizontal className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
                             <span className="sr-only">More</span>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-32 z-50">

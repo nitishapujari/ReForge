@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { ArrowRight, Bot, ShieldAlert, Sparkles, Activity, FileText, MessageSquare, CheckCircle2 } from "lucide-react"
 import { Logo } from "@/components/logo"
-import { motion, useSpring, useTransform, Variants } from "framer-motion"
+import { motion, useSpring, useTransform, Variants, useReducedMotion } from "framer-motion"
 
 import { buttonVariants, Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -26,6 +26,7 @@ const shortenId = (id: string) => {
 function FloatingOrbs() {
   const [mounted, setMounted] = useState(false)
   const [orbs, setOrbs] = useState<any[]>([])
+  const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
     setOrbs([...Array(5)].map(() => ({
@@ -46,14 +47,14 @@ function FloatingOrbs() {
       {orbs.map((orb, i) => (
         <motion.div
           key={i}
-          animate={{
+          animate={prefersReducedMotion ? { opacity: [0.1, 0.3, 0.1] } : {
             y: [0, orb.yOffset, 0],
             x: [0, orb.xOffset, 0],
             opacity: [0.1, 0.5, 0.1],
             scale: [1, 1.5, 1],
           }}
           transition={{
-            duration: orb.duration,
+            duration: prefersReducedMotion ? 10 : orb.duration,
             repeat: Infinity,
             ease: "easeInOut",
             delay: orb.delay,
@@ -100,6 +101,7 @@ const itemVariants: Variants = {
 
 export default function HomePage() {
   const [providerInfo, setProviderInfo] = useState<{provider: string, model: string}>({ provider: "Loading...", model: "" })
+  const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
     fetch("/api/v1/health")
@@ -116,63 +118,67 @@ export default function HomePage() {
   }, [])
 
   return (
-    <div className="relative flex-1 min-h-[calc(100svh-3rem)] flex flex-col items-center justify-center overflow-hidden">
+    <div className="relative flex-1 flex flex-col items-center pt-8 md:pt-12 overflow-hidden">
       {/* Animated Mesh Gradient Background */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
         <motion.div 
-          animate={{ 
+          animate={prefersReducedMotion ? { opacity: [0.15, 0.25, 0.15] } : { 
             scale: [1, 1.2, 1],
             rotate: [0, 90, 0],
-            opacity: [0.3, 0.5, 0.3]
+            opacity: [0.15, 0.3, 0.15]
           }}
-          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-          className="absolute top-[-10%] left-[-10%] h-[600px] w-[600px] rounded-full bg-primary/20 blur-[120px]" 
+          transition={{ duration: prefersReducedMotion ? 15 : 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-primary/20 blur-[120px]" 
         />
         <motion.div 
-          animate={{ 
+          animate={prefersReducedMotion ? { opacity: [0.1, 0.2, 0.1] } : { 
             scale: [1, 1.3, 1],
             rotate: [0, -90, 0],
-            opacity: [0.2, 0.4, 0.2]
+            opacity: [0.1, 0.25, 0.1]
           }}
-          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-          className="absolute bottom-[-10%] right-[-10%] h-[500px] w-[500px] rounded-full bg-blue-500/20 blur-[100px]" 
+          transition={{ duration: prefersReducedMotion ? 20 : 25, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[20%] right-[-10%] h-[400px] w-[400px] rounded-full bg-blue-500/20 blur-[100px]" 
         />
       <FloatingOrbs />
       </div>
 
-      <div className="container relative z-10 mx-auto px-4 py-16 flex flex-col items-center text-center w-full">
+      <motion.div 
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="container relative z-10 mx-auto px-4 pb-16 flex flex-col items-center text-center w-full"
+      >
         <HeroSection providerInfo={providerInfo} />
         <PersonalizedDashboard />
-      </div>
+      </motion.div>
     </div>
   )
 }
 
 function HeroSection({ providerInfo }: { providerInfo: { provider: string, model: string } }) {
+  const prefersReducedMotion = useReducedMotion()
   return (
     <motion.div 
-      variants={containerVariants} 
-      initial="hidden" 
-      animate="show"
+      variants={itemVariants} 
       className="flex flex-col items-center"
     >
-      <motion.div variants={itemVariants} className="mb-8 flex items-center justify-center w-48 h-auto md:w-64">
+      <motion.div variants={itemVariants} className="mb-6 flex items-center justify-center w-40 h-auto md:w-48">
         <Logo showText />
       </motion.div>
 
-      <motion.div variants={itemVariants} className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-primary/20 bg-primary/10 text-primary mb-6 shadow-sm shadow-primary/20 hover:shadow-primary/40 hover:bg-primary/20 cursor-default">
+      <motion.div variants={itemVariants} className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-primary/20 bg-primary/10 text-primary mb-4 shadow-sm shadow-primary/20 hover:shadow-primary/40 hover:bg-primary/20 cursor-default">
         <Sparkles className="mr-2 h-4 w-4" />
         Powered by {providerInfo.provider} {providerInfo.model ? `• ${providerInfo.model}` : ""}
       </motion.div>
       
       <div className="overflow-hidden mb-6 max-w-4xl">
         <motion.h1 
-          className="text-4xl font-extrabold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl flex flex-wrap justify-center gap-x-4 gap-y-2"
+          className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl lg:text-6xl flex flex-wrap justify-center gap-x-3 gap-y-1"
           variants={{
             hidden: { opacity: 0 },
             show: {
               opacity: 1,
-              transition: { staggerChildren: 0.1 }
+              transition: { staggerChildren: prefersReducedMotion ? 0 : 0.05 }
             }
           }}
           initial="hidden"
@@ -182,8 +188,8 @@ function HeroSection({ providerInfo }: { providerInfo: { provider: string, model
             <motion.span
               key={i}
               variants={{
-                hidden: { opacity: 0, y: 40, filter: "blur(10px)" },
-                show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 200, damping: 20 } }
+                hidden: { opacity: 0, y: prefersReducedMotion ? 0 : 20, filter: prefersReducedMotion ? "blur(0px)" : "blur(10px)" },
+                show: { opacity: 1, y: 0, filter: "blur(0px)", transition: { type: "spring", stiffness: 100, damping: 20 } }
               }}
               className="bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/60 inline-block"
             >
@@ -195,14 +201,18 @@ function HeroSection({ providerInfo }: { providerInfo: { provider: string, model
       
       <RagPipelineVisualizer />
       
-      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 mb-16 mt-10">
-        <Link href="/chat" className={cn(buttonVariants({ size: "lg" }), "group rounded-full px-8 shadow-lg hover:shadow-primary/25 transition-all hover:-translate-y-0.5")}>
-          Start Chatting
-          <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-        </Link>
-        <Link href="/upload" className={cn(buttonVariants({ size: "lg", variant: "outline" }), "rounded-full px-8 backdrop-blur-sm bg-background/50 hover:bg-muted/80 transition-all hover:-translate-y-0.5")}>
-          Upload Documents
-        </Link>
+      <motion.div variants={itemVariants} className="flex flex-col sm:flex-row gap-4 mb-8 mt-6">
+        <motion.div whileTap={{ scale: 0.95 }} whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+          <Link href="/chat" className={cn(buttonVariants({ size: "lg" }), "group rounded-full px-8 shadow-[0_0_15px_rgba(var(--primary),0.2)] hover:shadow-[0_0_25px_rgba(var(--primary),0.5)] transition-shadow duration-300")}>
+            Start Chatting
+            <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+          </Link>
+        </motion.div>
+        <motion.div whileTap={{ scale: 0.95 }} whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+          <Link href="/upload" className={cn(buttonVariants({ size: "lg", variant: "outline" }), "rounded-full px-8 backdrop-blur-sm bg-background/50 hover:bg-primary/5 hover:border-primary/30 transition-colors duration-300")}>
+            Upload Documents
+          </Link>
+        </motion.div>
       </motion.div>
     </motion.div>
   )
@@ -306,6 +316,7 @@ function RagPipelineVisualizer() {
 
 function PersonalizedDashboard() {
   const { user, isLoading: isUserLoading } = useUser()
+  const prefersReducedMotion = useReducedMotion()
   const [docs, setDocs] = useState<any[]>([])
   const [sessions, setSessions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -354,65 +365,95 @@ function PersonalizedDashboard() {
   const lastSession = sessions.length > 0 ? sessions[0] : null
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 40 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
-      className="w-full max-w-5xl mt-12 space-y-16 text-left"
-    >
-      {/* Your Activity */}
-      <section>
+    <div className="w-full max-w-5xl mt-8 space-y-12 text-left">
+      {/* Continue Last Conversation Banner */}
+      {lastSession && (
+        <motion.section variants={itemVariants}>
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4, scale: 1.01 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-primary/5 backdrop-blur-xl border-primary/20 shadow-[0_8px_30px_rgba(var(--primary),0.1)] relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none transition-all duration-700 group-hover:bg-primary/20" />
+              <CardContent className="p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                <div className="space-y-2">
+                  <h3 className="text-xl font-bold flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5 text-primary" />
+                    Continue Last Conversation
+                  </h3>
+                  <p className="text-lg font-medium text-foreground line-clamp-1">
+                    {lastSession.title || "Untitled Session"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Last active {new Date(lastSession.updated_at || lastSession.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <Link href={`/chat?session=${lastSession.id}`}>
+                  <motion.div whileTap={{ scale: 0.95 }}>
+                    <Button size="lg" className="group shadow-[0_0_15px_rgba(var(--primary),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary),0.5)] transition-shadow duration-300">
+                      Resume Chat
+                      <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
+                    </Button>
+                  </motion.div>
+                </Link>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.section>
+      )}
+
+      {/* System & Activity */}
+      <motion.section variants={itemVariants}>
         <h2 className="text-2xl font-bold tracking-tight mb-6 flex items-center gap-2">
           <Activity className="w-6 h-6 text-primary" /> System & Activity
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <motion.div whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-primary/10 shadow-lg hover:border-primary/30 transition-colors">
-              <CardHeader className="pb-2">
-                <CardDescription>Total Documents</CardDescription>
-                <CardTitle className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-card/40 backdrop-blur-md border-primary/10 shadow-lg hover:border-primary/30 hover:shadow-xl transition-all duration-300 h-full">
+              <CardContent className="p-6">
+                <CardDescription className="mb-2 font-medium">Total Documents</CardDescription>
+                <CardTitle className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
                   {loading ? "..." : <AnimatedNumber value={docs.length} />}
                 </CardTitle>
-              </CardHeader>
+              </CardContent>
             </Card>
           </motion.div>
-          <motion.div whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-primary/10 shadow-lg hover:border-primary/30 transition-colors">
-              <CardHeader className="pb-2">
-                <CardDescription>Total Conversations</CardDescription>
-                <CardTitle className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-card/40 backdrop-blur-md border-primary/10 shadow-lg hover:border-primary/30 hover:shadow-xl transition-all duration-300 h-full">
+              <CardContent className="p-6">
+                <CardDescription className="mb-2 font-medium">Total Conversations</CardDescription>
+                <CardTitle className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
                   {loading ? "..." : <AnimatedNumber value={sessions.length} />}
                 </CardTitle>
-              </CardHeader>
+              </CardContent>
             </Card>
           </motion.div>
-          <motion.div whileHover={{ y: -5 }} transition={{ type: "spring", stiffness: 300 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary),0.1)] hover:border-primary/50 transition-colors relative overflow-hidden h-full">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-primary/20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none" />
-              <CardHeader className="pb-2">
-                <CardDescription className="text-primary font-medium flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" /> Grounded Accuracy</CardDescription>
-                <CardTitle className="text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-primary to-primary/60">
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-card/40 backdrop-blur-md border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary),0.1)] hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.2)] transition-all duration-300 relative overflow-hidden h-full group">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-primary/20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500 group-hover:opacity-100 opacity-70" />
+              <CardContent className="p-6 relative z-10">
+                <CardDescription className="text-primary font-medium flex items-center gap-1.5 mb-2">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Grounded Accuracy
+                </CardDescription>
+                <CardTitle className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-primary to-primary/60">
                   {loading ? "..." : <span><AnimatedNumber value={99} />%</span>}
                 </CardTitle>
-                <p className="text-xs text-muted-foreground mt-2">Self-healing pipeline active</p>
-              </CardHeader>
+                <p className="text-xs text-muted-foreground mt-2 font-medium">Self-healing pipeline active</p>
+              </CardContent>
             </Card>
           </motion.div>
         </div>
-      </section>
+      </motion.section>
 
-      {/* User Insights */}
-      <section>
+      {/* Recent Insights */}
+      <motion.section variants={itemVariants}>
         <h2 className="text-2xl font-bold tracking-tight mb-6">Recent Insights</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           
           {/* Recently Uploaded */}
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 400 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-border/50 shadow-md h-full">
-              <CardHeader>
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-card/40 backdrop-blur-md border-border/50 shadow-md h-full hover:border-border transition-colors">
+              <CardHeader className="p-6 pb-4">
                 <CardTitle className="text-lg">Recently Uploaded</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6 pt-0">
                 {loading ? (
                   <div className="space-y-3 opacity-50">
                     <div className="h-10 bg-muted rounded animate-pulse" />
@@ -422,12 +463,12 @@ function PersonalizedDashboard() {
                   <ul className="space-y-4">
                     {recentDocs.map((doc, idx) => (
                       <li key={doc.document_id || doc.id || idx} className="flex items-center gap-3 group">
-                        <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                          <FileText className="w-4 h-4 text-primary" />
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 group-hover:scale-105 transition-all">
+                          <FileText className="w-5 h-5 text-primary" />
                         </div>
                         <div className="overflow-hidden">
-                          <p className="text-sm font-medium truncate group-hover:text-primary transition-colors" title={doc.filename}>{doc.filename}</p>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors" title={doc.filename}>{doc.filename}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {new Date(doc.created_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -442,12 +483,12 @@ function PersonalizedDashboard() {
           </motion.div>
 
           {/* Recent Sessions */}
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 400 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-border/50 shadow-md h-full">
-              <CardHeader>
+          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+            <Card className="bg-card/40 backdrop-blur-md border-border/50 shadow-md h-full hover:border-border transition-colors">
+              <CardHeader className="p-6 pb-4">
                 <CardTitle className="text-lg">Recent Sessions</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="p-6 pt-0">
                 {loading ? (
                   <div className="space-y-3 opacity-50">
                     <div className="h-10 bg-muted rounded animate-pulse" />
@@ -458,17 +499,17 @@ function PersonalizedDashboard() {
                     {recentSessions.map((session, idx) => (
                       <li key={session.id || idx}>
                         <Link href={`/chat?session=${session.id}`} className="block group">
-                          <div className="flex items-start gap-4">
-                            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
+                          <motion.div whileTap={{ scale: 0.98 }} className="flex items-center gap-4 p-1 rounded-md hover:bg-muted/30 transition-colors">
+                            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-primary/30 transition-all">
                               <MessageSquare className="w-5 h-5 text-primary" />
                             </div>
-                            <div className="space-y-1">
-                              <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate" title={session.title}>{session.title || "New Chat"}</p>
-                              <p className="text-sm text-muted-foreground">
-                                ID: {shortenId(session.id)} • {session.message_count} messages
+                            <div className="overflow-hidden">
+                              <p className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors truncate" title={session.title}>{session.title || "New Chat"}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 group-hover:text-foreground/80 transition-colors">
+                                {session.message_count} messages
                               </p>
                             </div>
-                          </div>
+                          </motion.div>
                         </Link>
                       </li>
                     ))}
@@ -479,43 +520,9 @@ function PersonalizedDashboard() {
               </CardContent>
             </Card>
           </motion.div>
-
-          {/* Continue Last Conversation */}
-          <motion.div whileHover={{ scale: 1.02 }} transition={{ type: "spring", stiffness: 400 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-primary/20 bg-primary/5 shadow-md h-full relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full blur-2xl -mr-16 -mt-16 pointer-events-none" />
-              <CardHeader>
-                <CardTitle className="text-lg">Continue Last Conversation</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3 opacity-50">
-                    <div className="h-10 bg-muted rounded animate-pulse" />
-                  </div>
-                ) : lastSession ? (
-                  <div className="space-y-4 flex flex-col items-start relative z-10">
-                    <p className="text-sm font-medium text-foreground line-clamp-2">
-                      {lastSession.title || "Untitled Session"}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Last active {new Date(lastSession.updated_at || lastSession.created_at).toLocaleDateString()}
-                    </p>
-                    <Link href={`/chat?session=${lastSession.id}`}>
-                      <Button variant="default" size="sm" className="mt-2 group shadow-md">
-                        Resume Chat
-                        <ArrowRight className="ml-2 w-3 h-3 transition-transform group-hover:translate-x-1" />
-                      </Button>
-                    </Link>
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Start a new chat to see it here.</p>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
           
         </div>
-      </section>
-    </motion.div>
+      </motion.section>
+    </div>
   )
 }
