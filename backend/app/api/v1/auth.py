@@ -5,7 +5,9 @@ Handles user registration and login.
 """
 
 from datetime import timedelta
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.security import OAuth2PasswordRequestForm
+from typing import Annotated
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -116,6 +118,14 @@ async def login(credentials: UserLogin, db: SessionDep):
         "token_type": "bearer",
         "user": {"id": user.id, "email": user.email, "first_name": user.first_name, "last_name": user.last_name}
     }
+
+
+@router.post("/swagger-login", include_in_schema=False)
+async def swagger_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: SessionDep):
+    """Dedicated login endpoint for Swagger UI's OAuth2 Password flow."""
+    # OAuth2PasswordRequestForm uses 'username', which we map to our 'email' field
+    credentials = UserLogin(email=form_data.username, password=form_data.password)
+    return await login(credentials, db)
 
 
 @router.get("/me")

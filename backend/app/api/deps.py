@@ -18,8 +18,8 @@ from app.utils.auth import decode_access_token
 # Re-export get_db_session for convenience
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
-# We use standard OAuth2 Bearer token schema
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+# We use standard OAuth2 Bearer token schema (pointed at our dedicated swagger endpoint)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/swagger-login")
 TokenDep = Annotated[str, Depends(oauth2_scheme)]
 
 
