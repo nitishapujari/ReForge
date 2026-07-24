@@ -33,11 +33,17 @@ def init_vectorstore(collection_name: str) -> None:
     from app.config import get_settings
     settings = get_settings()
 
-    _client = chromadb.HttpClient(
-        host=settings.CHROMA_HOST,
-        port=settings.CHROMA_PORT,
-        settings=chromadb.config.Settings(anonymized_telemetry=False)
-    )
+    if settings.CHROMA_MODE == "persistent":
+        _client = chromadb.PersistentClient(
+            path=settings.CHROMA_PERSIST_DIR,
+            settings=chromadb.config.Settings(anonymized_telemetry=False)
+        )
+    else:
+        _client = chromadb.HttpClient(
+            host=settings.CHROMA_HOST,
+            port=settings.CHROMA_PORT,
+            settings=chromadb.config.Settings(anonymized_telemetry=False)
+        )
 
     _collection = _client.get_or_create_collection(
         name=collection_name,
@@ -47,7 +53,8 @@ def init_vectorstore(collection_name: str) -> None:
 
     doc_count = _collection.count()
     logger.info(
-        "ChromaDB initialized via HTTP: collection='%s', documents=%d",
+        "ChromaDB initialized via %s: collection='%s', documents=%d",
+        settings.CHROMA_MODE.upper(),
         collection_name,
         doc_count,
     )

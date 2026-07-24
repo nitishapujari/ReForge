@@ -40,8 +40,10 @@ class Settings(BaseSettings):
                 raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
             return self.GEMINI_API_KEY
 
+    CHROMA_MODE: str = "http"  # 'http' or 'persistent'
     CHROMA_HOST: str = "chroma"
     CHROMA_PORT: int = 8000
+    CHROMA_PERSIST_DIR: str = "storage/chromadb"
     CHROMA_COLLECTION_NAME: str = "reforge_documents"
 
     DATABASE_URL: str = "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
