@@ -37,23 +37,30 @@ class TokenResponse(BaseModel):
     user: dict
 
 
+import logging
+logger = logging.getLogger(__name__)
+
 @router.post("/register")
 async def register(user_in: UserRegister, db: SessionDep):
     """Register a new user with email and password."""
     # Ensure email is lowercase for case-insensitive matching
     email_lower = str(user_in.email).lower()
+    logger.info(f"[Auth] Registering user with email: {email_lower}")
     
     try:
+        hashed = get_password_hash(user_in.password)
+        logger.info(f"[Auth] Generated password hash for {email_lower}: {hashed}")
         new_user = User(
             first_name=user_in.first_name,
             last_name=user_in.last_name,
             email=email_lower,
-            hashed_password=get_password_hash(user_in.password),
+            hashed_password=hashed,
             provider="credentials"
         )
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
+        logger.info(f"[Auth] User {email_lower} successfully saved to DB with ID: {new_user.id}")
         
         # Auto-login after registration
         access_token_expires = timedelta(days=7)
@@ -67,6 +74,7 @@ async def register(user_in: UserRegister, db: SessionDep):
             "user": {"id": new_user.id, "email": new_user.email, "first_name": new_user.first_name, "last_name": new_user.last_name}
         }
     except IntegrityError:
+        logger.warning(f"[Auth] Registration failed for {email_lower} - email exists")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -84,10 +92,13 @@ async def register(user_in: UserRegister, db: SessionDep):
 async def login(credentials: UserLogin, db: SessionDep):
     """Authenticate a user and return a JWT."""
     email_lower = str(credentials.email).lower()
+    logger.info(f"[Auth] Login attempt for email: {email_lower}")
+    
     result = await db.execute(select(User).where(User.email == email_lower))
     user = result.scalar_one_or_none()
     
-    if not user or not user.hashed_password:
+    if not user:
+        logger.warning(f"[Auth] Login failed: User not found for email {email_lower}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -100,7 +111,8 @@ async def login(credentials: UserLogin, db: SessionDep):
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    if not verify_password(credentials.password, user.hashed_password):
+    if not user.hashed_password:
+        logger.warning(f"[Auth] Login failed: User {email_lower} has no hashed_password")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -112,6 +124,27 @@ async def login(credentials: UserLogin, db: SessionDep):
             },
             headers={"WWW-Authenticate": "Bearer"},
         )
+        
+    logger.info(f"[Auth] Found user {email_lower} with hash {user.hashed_password}. Verifying password...")
+    
+    is_valid = verify_password(credentials.password, user.hashed_password)
+    logger.info(f"[Auth] Password verification result for {email_lower}: {is_valid}")
+    
+    if not is_valid:
+        logger.warning(f"[Auth] Login failed: Password verification failed for {email_lower}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "success": False,
+                "error": {
+                    "code": "INVALID_CREDENTIALS",
+                    "message": "Incorrect email or password."
+                }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        
+    logger.info(f"[Auth] Login successful for {email_lower}")
         
     access_token_expires = timedelta(days=7)
     access_token = create_access_token(
