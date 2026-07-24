@@ -40,11 +40,14 @@ class TokenResponse(BaseModel):
 @router.post("/register")
 async def register(user_in: UserRegister, db: SessionDep):
     """Register a new user with email and password."""
+    # Ensure email is lowercase for case-insensitive matching
+    email_lower = str(user_in.email).lower()
+    
     try:
         new_user = User(
             first_name=user_in.first_name,
             last_name=user_in.last_name,
-            email=user_in.email,
+            email=email_lower,
             hashed_password=get_password_hash(user_in.password),
             provider="credentials"
         )
@@ -80,7 +83,8 @@ async def register(user_in: UserRegister, db: SessionDep):
 @router.post("/login")
 async def login(credentials: UserLogin, db: SessionDep):
     """Authenticate a user and return a JWT."""
-    result = await db.execute(select(User).where(User.email == credentials.email))
+    email_lower = str(credentials.email).lower()
+    result = await db.execute(select(User).where(User.email == email_lower))
     user = result.scalar_one_or_none()
     
     if not user or not user.hashed_password:
@@ -92,7 +96,8 @@ async def login(credentials: UserLogin, db: SessionDep):
                     "code": "INVALID_CREDENTIALS",
                     "message": "Incorrect email or password."
                 }
-            }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
         )
         
     if not verify_password(credentials.password, user.hashed_password):
@@ -104,7 +109,8 @@ async def login(credentials: UserLogin, db: SessionDep):
                     "code": "INVALID_CREDENTIALS",
                     "message": "Incorrect email or password."
                 }
-            }
+            },
+            headers={"WWW-Authenticate": "Bearer"},
         )
         
     access_token_expires = timedelta(days=7)
