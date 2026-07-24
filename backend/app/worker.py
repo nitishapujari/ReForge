@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from huey import SqliteHuey
+from huey import RedisHuey
 
 from app.models.database import get_session_factory
 from app.models.document import Document
@@ -12,8 +12,12 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Configure Huey with SQLite backend
-huey = SqliteHuey(filename='storage/huey_queue.db')
+# Load config early so we can initialize Huey before @huey.on_startup
+from app.config import get_settings
+settings = get_settings()
+
+# Configure Huey with Redis backend
+huey = RedisHuey(url=settings.REDIS_URL)
 
 def async_to_sync(coro):
     """Run async function in sync context"""
@@ -33,12 +37,11 @@ def worker_startup():
     settings = get_settings()
     logger.info("Initializing database and vector store for Huey worker...")
     
-    # Initialize SQLite database
-    async_to_sync(init_db(settings.DATABASE_URL, settings.database_path))
+    # Initialize database
+    async_to_sync(init_db(settings.DATABASE_URL))
     
     # Initialize ChromaDB vector store
     init_vectorstore(
-        persist_dir=str(settings.chroma_persist_path),
         collection_name=settings.CHROMA_COLLECTION_NAME,
     )
     

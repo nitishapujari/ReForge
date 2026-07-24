@@ -16,7 +16,6 @@ from app.api.v1.auth import router as auth_router
 
 v1_router = APIRouter(prefix="/api/v1")
 
-# --- Register route modules ---
 v1_router.include_router(health_router)
 v1_router.include_router(history_router)
 v1_router.include_router(documents_router)

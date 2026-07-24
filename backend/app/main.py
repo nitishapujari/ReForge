@@ -39,7 +39,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     - Configures logging
     - Ensures storage directories exist
     """
-    # --- Startup ---
     try:
         settings = get_settings()
     except ValidationError as e:
@@ -51,13 +50,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.LOG_LEVEL)
     logger.info("Starting %s v%s", settings.APP_TITLE, settings.APP_VERSION)
 
-    # Ensure storage directories exist
-    storage_dir = Path(settings.chroma_persist_path)
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
     # Initialize vector store
     init_vectorstore(
-        persist_dir=str(settings.chroma_persist_path),
         collection_name=settings.CHROMA_COLLECTION_NAME,
     )
 
@@ -78,7 +72,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         groq_model=settings.GROQ_MODEL,
     )
 
-    # --- Migration: Schema and Legacy Data ---
     from sqlalchemy import select, text
     from sqlalchemy.exc import OperationalError
     import app.models.database as db_mod
@@ -89,8 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     import uuid
 
     # Initialize database (creates tables if they don't exist)
-    await init_db(settings.DATABASE_URL, settings.database_path)
-    logger.info("Database initialized: %s", settings.database_path)
+    await init_db(settings.DATABASE_URL)
 
     factory = db_mod.get_session_factory()
     async with factory() as session:
@@ -195,7 +187,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     yield
 
-    # --- Shutdown ---
     await close_db()
     logger.info("Application shutdown complete")
 
@@ -222,7 +213,6 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json",
     )
 
-    # --- CORS ---
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],  # Next.js dev server
@@ -231,7 +221,6 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # --- Routers ---
     app.include_router(v1_router)
 
     return app

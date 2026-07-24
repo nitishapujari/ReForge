@@ -6,6 +6,7 @@ __pycache__/
 # Virtual Environment
 venv/
 .venv/
+backend/venv/
 
 # Environment Variables
 .env
@@ -38,4 +39,7 @@ Thumbs.db
 
 # Runtime storage
 backend/storage/*.db
+backend/storage/*.db-shm
+backend/storage/*.db-wal
+backend/storage/temp_docs/
 backend/storage/chromadb/

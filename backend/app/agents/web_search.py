@@ -8,7 +8,7 @@ the necessary context to answer the user's question.
 import time
 import json
 from langchain_core.runnables import RunnableConfig
-from ddgs import DDGS
+from duckduckgo_search import DDGS
 
 from app.graph.state import GraphState, TraceEntry
 from app.utils.logger import get_logger

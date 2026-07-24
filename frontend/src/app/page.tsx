@@ -25,7 +25,7 @@ const shortenId = (id: string) => {
 
 function FloatingOrbs() {
   const [mounted, setMounted] = useState(false)
-  const [orbs, setOrbs] = useState<{left: string, top: string, duration: number, delay: number, yOffset: number, xOffset: number}[]>([])
+  const [orbs, setOrbs] = useState<any[]>([])
   const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
@@ -162,13 +162,13 @@ function HeroSection({ providerInfo }: { providerInfo: { provider: string, model
       variants={itemVariants} 
       className="flex flex-col items-center"
     >
-      <motion.div variants={itemVariants} className="mb-6 flex items-center justify-center w-40 h-auto md:w-48">
+      <motion.div variants={itemVariants} className="mb-6 flex items-center justify-center w-64 h-auto md:w-80">
         <Logo showText />
       </motion.div>
 
       <motion.div variants={itemVariants} className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-primary/20 bg-primary/10 text-primary mb-4 shadow-sm shadow-primary/20 hover:shadow-primary/40 hover:bg-primary/20 cursor-default">
         <Sparkles className="mr-2 h-4 w-4" />
-        Powered by {providerInfo.provider} {providerInfo.model ? `• ${providerInfo.model}` : ""}
+        Powered by {providerInfo.provider} {providerInfo.model ? `(${providerInfo.model})` : ""}
       </motion.div>
       
       <div className="overflow-hidden mb-6 max-w-4xl">

@@ -8,7 +8,7 @@ Async SQLAlchemy setup for SQLite. Provides:
 - Dependency for FastAPI route injection
 """
 
-from pathlib import Path
+
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import (
@@ -34,24 +34,17 @@ _engine = None
 _async_session_factory = None
 
 
-async def init_db(database_url: str, db_path: Path) -> None:
+async def init_db(database_url: str) -> None:
     """
     Initialize the database engine and create all tables.
 
     Args:
-        database_url: SQLAlchemy connection string (e.g. sqlite+aiosqlite:///...).
-        db_path: Absolute path to the SQLite file (for directory creation).
+        database_url: SQLAlchemy connection string (e.g. postgresql+asyncpg://...).
     """
     global _engine, _async_session_factory
 
-    # Ensure the directory exists
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # Build absolute URL for SQLite
-    absolute_url = f"sqlite+aiosqlite:///{db_path}"
-
     _engine = create_async_engine(
-        absolute_url,
+        database_url,
         echo=False,
         future=True,
     )
@@ -66,7 +59,7 @@ async def init_db(database_url: str, db_path: Path) -> None:
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    logger.info("Database initialized at %s", db_path)
+    logger.info("Database initialized with URL: %s", database_url.split('@')[-1] if '@' in database_url else database_url)
 
 
 async def close_db() -> None:

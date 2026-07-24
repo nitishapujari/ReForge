@@ -1,0 +1,106 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: reforge-db
+    environment:
+      POSTGRES_USER: reforge
+      POSTGRES_PASSWORD: reforge
+      POSTGRES_DB: reforge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: reforge-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: reforge-chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=False
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8001:8000"
+
+  api:
+    build:
+      context: ./backend
+    container_name: reforge-api
+    depends_on:
+      db:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://reforge:reforge@db:5432/reforge
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    volumes:
+      - reforge_documents:/app/storage/temp_docs
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+  worker:
+    build:
+      context: ./backend
+    container_name: reforge-worker
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+    env_file:
+      - ./backend/.env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://reforge:reforge@db:5432/reforge
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+    volumes:
+      - reforge_documents:/app/storage/temp_docs
+    command: huey_consumer app.worker.huey
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: reforge-frontend
+    depends_on:
+      - api
+    environment:
+      - BACKEND_URL=http://api:8000
+      - NEXTAUTH_URL=http://localhost:3000
+      - NEXTAUTH_SECRET=reforge_local_secret_key_12345
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
+  chroma_data:
+  reforge_documents:

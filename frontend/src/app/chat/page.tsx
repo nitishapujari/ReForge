@@ -390,8 +390,11 @@ function ChatContent() {
     const val = e.target.value
     setInput(val)
     
-    if (val.endsWith("@")) {
+    const mentionMatch = val.match(/@([a-zA-Z0-9_\-\.]*)$/)
+    if (mentionMatch) {
       setMentionOpen(true)
+    } else {
+      setMentionOpen(false)
     }
   }
   
@@ -400,9 +403,10 @@ function ChatContent() {
       setSelectedDocs(prev => [...prev, doc])
     }
     setMentionOpen(false)
-    if (input.endsWith("@")) {
-      setInput(input.slice(0, -1))
-    }
+    
+    // Replace the @query with empty string to remove the mention text from input
+    const newValue = input.replace(/@([a-zA-Z0-9_\-\.]*)$/, '')
+    setInput(newValue)
   }
 
   return (
@@ -952,11 +956,14 @@ function ChatContent() {
               </PopoverTrigger>
               <PopoverContent className="w-80 p-0" align="start" sideOffset={10}>
                 <Command>
-                  <CommandInput placeholder="Search documents..." />
                   <CommandList>
                     <CommandEmpty>No documents found.</CommandEmpty>
                     <CommandGroup>
-                      {availableDocs.map((doc) => (
+                      {availableDocs.filter(doc => {
+                        const mentionMatch = input.match(/@([a-zA-Z0-9_\-\.]*)$/)
+                        const mentionQuery = mentionMatch ? mentionMatch[1].toLowerCase() : ""
+                        return doc.filename.toLowerCase().includes(mentionQuery)
+                      }).map((doc) => (
                         <CommandItem
                           key={doc.document_id}
                           value={doc.filename}

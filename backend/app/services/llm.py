@@ -110,9 +110,7 @@ def check_health() -> bool:
         return _check_health_groq()
     return _check_health_gemini()
 
-# ==============================================================================
 # Gemini Implementation
-# ==============================================================================
 
 def _get_gemini_client() -> genai.Client:
     if _gemini_client is None:
@@ -260,9 +258,7 @@ def _check_health_gemini() -> bool:
         return False
 
 
-# ==============================================================================
 # Groq Implementation
-# ==============================================================================
 
 def _get_groq_client() -> groq.Groq:
     if _groq_client is None:

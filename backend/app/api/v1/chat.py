@@ -74,7 +74,6 @@ async def chat(
     db: AsyncSession = Depends(get_db_session),
 ) -> ChatResponse:
     """Process a chat request through the RAG pipeline."""
-    # Step 1: Resolve or create session
     if request.session_id:
         session = await chat_history.get_session(db, request.session_id, current_user.id)
         if session is None:
@@ -91,7 +90,6 @@ async def chat(
         session_id = session.id
         logger.info("Created new session: %s", session_id)
 
-    # Step 2: Save the user message
     await chat_history.add_message(
         db=db,
         session_id=session_id,
@@ -99,7 +97,6 @@ async def chat(
         content=request.question,
     )
 
-    # Step 2.5: Route conversational queries
     intent = await conversation_router.classify(request.question)
     if intent != Intent.KNOWLEDGE_QUERY:
         logger.info("Conversational intent %s detected, bypassing graph", intent.name)
@@ -154,7 +151,6 @@ async def chat(
             attempts=0
         )
 
-    # Step 3: Generate answer through the LangGraph pipeline
     try:
         chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
         initial_state = get_initial_state(
@@ -197,7 +193,6 @@ async def chat(
             detail=clean_error,
         )
 
-    # Step 4: Save the assistant message
     await chat_history.add_message(
         db=db,
         session_id=session_id,
@@ -223,7 +218,6 @@ async def chat(
         attempts
     )
 
-    # Step 5: Return the response
     return ChatResponse(
         session_id=session_id,
         answer=final_answer,

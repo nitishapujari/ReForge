@@ -10,9 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-# =============================================================================
 # Health
-# =============================================================================
 
 
 class HealthResponse(BaseModel):
@@ -26,9 +24,7 @@ class HealthResponse(BaseModel):
     database: str = Field(..., examples=["connected"])
 
 
-# =============================================================================
 # Chat
-# =============================================================================
 
 
 class ChatRequest(BaseModel):
@@ -111,9 +107,7 @@ class ChatResponse(BaseModel):
     )
 
 
-# =============================================================================
 # Chat History
-# =============================================================================
 
 
 class MessageResponse(BaseModel):
@@ -152,9 +146,7 @@ class SessionDetailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# =============================================================================
 # Documents
-# =============================================================================
 
 
 class DocumentUploadResponse(BaseModel):
@@ -182,9 +174,7 @@ class DocumentResponse(BaseModel):
     status: str
 
 
-# =============================================================================
 # Traces
-# =============================================================================
 
 
 class TraceEntrySchema(BaseModel):

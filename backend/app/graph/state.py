@@ -29,14 +29,12 @@ class GraphState(TypedDict):
     Fields are grouped by the node that primarily writes them.
     """
 
-    # --- Input (set once at graph entry) ---
     question: str
     session_id: str
     user_id: str
     chat_history: list[dict]
     document_ids: list[str] | None
 
-    # --- Retrieval node ---
     retrieval_query: str | None
     rewritten_question: str | None
     retrieved_docs: list[str]
@@ -46,10 +44,8 @@ class GraphState(TypedDict):
     web_context: list[str] | None
     web_sources: list[dict] | None
 
-    # --- Generator node ---
     answer: str | None
 
-    # --- Critic node ---
     grounded: bool | None
     confidence: float | None
     critic_feedback: str | None
@@ -57,14 +53,11 @@ class GraphState(TypedDict):
     missing_information: list[str]
     verification_status: str
 
-    # --- Decision / Loop control ---
     attempts: int
     max_attempts: int
     decision: str | None  # "accept", "rewrite", "escalate", "fail"
 
-    # --- Final output ---
     final_answer: str | None
     sources: list[SourceDocument]
 
-    # --- Observability ---
     trace: list[TraceEntry]

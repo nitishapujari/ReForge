@@ -22,7 +22,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- LLM ---
     LLM_PROVIDER: str = "gemini"
     GEMINI_API_KEY: str | None = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
@@ -41,46 +40,26 @@ class Settings(BaseSettings):
                 raise ValueError("GEMINI_API_KEY is required when LLM_PROVIDER=gemini")
             return self.GEMINI_API_KEY
 
-    # --- ChromaDB ---
-    CHROMA_PERSIST_DIR: str = "storage/chromadb"
+    CHROMA_HOST: str = "chroma"
+    CHROMA_PORT: int = 8000
     CHROMA_COLLECTION_NAME: str = "reforge_documents"
 
-    # --- Database ---
-    DATABASE_URL: str = "sqlite+aiosqlite:///storage/reforge.db"
+    DATABASE_URL: str = "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
+    
+    REDIS_URL: str = "redis://redis:6379/0"
 
-    # --- Logging ---
     LOG_LEVEL: str = "INFO"
 
-    # --- LangSmith (Optional) ---
     LANGSMITH_API_KEY: str | None = None
     LANGSMITH_PROJECT: str = "reforge"
 
-    # --- Auth ---
     JWT_SECRET: str = "super-secret-key-for-dev-only-change-in-prod"
     JWT_ALGORITHM: str = "HS256"
 
-    # --- Server ---
     APP_TITLE: str = "ReForge API"
     APP_DESCRIPTION: str = "The Self-Healing RAG Pipeline"
     APP_VERSION: str = "0.1.0"
 
-    @property
-    def chroma_persist_path(self) -> Path:
-        """Resolved absolute path for ChromaDB persistence."""
-        path = Path(self.CHROMA_PERSIST_DIR)
-        if not path.is_absolute():
-            path = _BACKEND_DIR / path
-        return path
-
-    @property
-    def database_path(self) -> Path:
-        """Resolved absolute path for the SQLite database."""
-        # Extract path from sqlite URL (after `///`)
-        db_path_str = self.DATABASE_URL.split("///", 1)[-1]
-        path = Path(db_path_str)
-        if not path.is_absolute():
-            path = _BACKEND_DIR / path
-        return path
 
 
 def get_settings() -> Settings:

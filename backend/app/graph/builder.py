@@ -36,9 +36,7 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# =============================================================================
 # Decision Router
-# =============================================================================
 
 
 def route_decision(state: GraphState) -> str:
@@ -72,9 +70,7 @@ def route_decision(state: GraphState) -> str:
         return END
 
 
-# =============================================================================
 # Graph Construction
-# =============================================================================
 
 
 def build_graph() -> StateGraph:
@@ -86,7 +82,6 @@ def build_graph() -> StateGraph:
     """
     graph = StateGraph(GraphState)
 
-    # --- Register nodes ---
     graph.add_node("retrieve", retrieve_node)
     graph.add_node("generate", generate_node)
     graph.add_node("critique", critique_node)
@@ -94,7 +89,6 @@ def build_graph() -> StateGraph:
     graph.add_node("rewrite", rewrite_node)
     graph.add_node("web_search", web_search_node)
 
-    # --- Define edges ---
     # Entry point
     graph.set_entry_point("retrieve")
 

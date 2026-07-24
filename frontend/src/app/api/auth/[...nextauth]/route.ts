@@ -21,7 +21,8 @@ export const authOptions: AuthOptions = {
         const endpoint = isRegister ? "/api/v1/auth/register" : "/api/v1/auth/login";
 
         try {
-          const res = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+          const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+          const res = await fetch(`${backendUrl}${endpoint}`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

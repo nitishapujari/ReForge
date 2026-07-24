@@ -19,12 +19,11 @@ _collection: chromadb.Collection | None = None
 _embedding_fn: SentenceTransformerEmbeddingFunction | None = None
 
 
-def init_vectorstore(persist_dir: str, collection_name: str) -> None:
+def init_vectorstore(collection_name: str) -> None:
     """
-    Initialize the ChromaDB persistent client and collection.
+    Initialize the ChromaDB HTTP client and collection.
 
     Args:
-        persist_dir: Directory path for ChromaDB persistence.
         collection_name: Name of the collection to use.
     """
     global _client, _collection, _embedding_fn
@@ -33,9 +32,12 @@ def init_vectorstore(persist_dir: str, collection_name: str) -> None:
         model_name=EMBEDDING_MODEL,
     )
 
+    from app.config import get_settings
+    settings = get_settings()
+
     _client = chromadb.HttpClient(
-        host="localhost",
-        port=8001,
+        host=settings.CHROMA_HOST,
+        port=settings.CHROMA_PORT,
         settings=chromadb.config.Settings(anonymized_telemetry=False)
     )
 
@@ -47,10 +49,9 @@ def init_vectorstore(persist_dir: str, collection_name: str) -> None:
 
     doc_count = _collection.count()
     logger.info(
-        "ChromaDB initialized: collection='%s', documents=%d, persist='%s'",
+        "ChromaDB initialized via HTTP: collection='%s', documents=%d",
         collection_name,
         doc_count,
-        persist_dir,
     )
 
 
