@@ -6,7 +6,7 @@ using the all-MiniLM-L6-v2 sentence transformer model.
 """
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
 from app.constants import EMBEDDING_MODEL
 from app.utils.logger import get_logger
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 # Module-level singleton
 _client: chromadb.ClientAPI | None = None
 _collection: chromadb.Collection | None = None
-_embedding_fn: SentenceTransformerEmbeddingFunction | None = None
+_embedding_fn: DefaultEmbeddingFunction | None = None
 
 
 def init_vectorstore(collection_name: str) -> None:
@@ -28,9 +28,7 @@ def init_vectorstore(collection_name: str) -> None:
     """
     global _client, _collection, _embedding_fn
 
-    _embedding_fn = SentenceTransformerEmbeddingFunction(
-        model_name=EMBEDDING_MODEL,
-    )
+    _embedding_fn = DefaultEmbeddingFunction()
 
     from app.config import get_settings
     settings = get_settings()
