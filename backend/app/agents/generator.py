@@ -28,7 +28,8 @@ from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-from app.constants import RELEVANCE_THRESHOLD, RELATIVE_MARGIN, MAX_CONTEXT_CHUNKS, STRONG_MATCH_THRESHOLD
+from app.constants import RELEVANCE_THRESHOLD, RELATIVE_MARGIN, MAX_CONTEXT_CHUNKS
+from app.config import get_settings
 from app.models.schemas import SourceDocument, ChunkPreview
 
 def generate_node(state: GraphState, config: RunnableConfig | None = None) -> dict:
@@ -41,6 +42,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         
     if stream_callback:
         stream_callback({"type": "status", "message": "📝 Drafting response...", "status": "info"})
+        
+    settings = get_settings()
+    evidence_threshold = settings.EVIDENCE_THRESHOLD
 
     start_time = time.perf_counter()
 
@@ -159,8 +163,8 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             continue
             
         # Minimum evidence check: single weak hit
-        if chunk_count == 1 and max_score < STRONG_MATCH_THRESHOLD:
-            diag["reason"] = f"Insufficient evidence: single weak match ({max_score:.2f} < {STRONG_MATCH_THRESHOLD})"
+        if chunk_count == 1 and max_score < evidence_threshold:
+            diag["reason"] = f"Insufficient evidence: single weak match ({max_score:.2f} < {evidence_threshold})"
             diagnostics.append(diag)
             continue
             

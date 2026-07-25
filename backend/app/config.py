@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     APP_TITLE: str = "ReForge API"
     APP_DESCRIPTION: str = "The Self-Healing RAG Pipeline"
     APP_VERSION: str = "0.1.0"
+    
+    EVIDENCE_THRESHOLD: float = 0.50
+
 
 
 
