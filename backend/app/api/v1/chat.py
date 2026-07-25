@@ -74,8 +74,9 @@ async def chat(
     db: AsyncSession = Depends(get_db_session),
 ) -> ChatResponse:
     """Process a chat request through the RAG pipeline."""
-    if request.session_id:
-        session = await chat_history.get_session(db, request.session_id, current_user.id)
+    session_id_val = request.session_id.strip() if request.session_id else None
+    if session_id_val and session_id_val.lower() not in ("null", "undefined", "none", ""):
+        session = await chat_history.get_session(db, session_id_val, current_user.id)
         if session is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -246,8 +247,9 @@ async def chat_stream(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Process a chat request and stream the response tokens."""
-    if request.session_id:
-        session = await chat_history.get_session(db, request.session_id, current_user.id)
+    session_id_val = request.session_id.strip() if request.session_id else None
+    if session_id_val and session_id_val.lower() not in ("null", "undefined", "none", ""):
+        session = await chat_history.get_session(db, session_id_val, current_user.id)
         if session is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
