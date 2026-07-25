@@ -47,8 +47,6 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION_NAME: str = "reforge_documents"
 
     DATABASE_URL: str = "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
-    
-    REDIS_URL: str = "redis://redis:6379/0"
 
     LOG_LEVEL: str = "INFO"
 

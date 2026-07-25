@@ -27,13 +27,9 @@ from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
 from app.services import document_processor, vectorstore
 from app.utils.logger import get_logger
-from app.worker import process_and_ingest_document_task, replace_document_task
 from datetime import datetime, timezone
 
 logger = get_logger(__name__)
-
-TEMP_DOCS_DIR = "storage/temp_docs"
-os.makedirs(TEMP_DOCS_DIR, exist_ok=True)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
@@ -101,25 +97,42 @@ async def upload_document(
     await db.commit()
     await db.refresh(new_doc)
 
-    # Save file temporarily for the worker
-    temp_file_path = os.path.join(TEMP_DOCS_DIR, f"{new_doc.id}_{uuid.uuid4().hex[:8]}")
-    with open(temp_file_path, "wb") as f:
-        f.write(file_content)
-
-    # Queue background processing and ingestion in Huey
-    process_and_ingest_document_task(
-        document_id=new_doc.id,
-        user_id=current_user.id,
-        filename=file.filename,
-        file_path=temp_file_path,
-        file_hash=file_hash,
-    )
+    # Process document synchronously in a thread pool
+    try:
+        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+            document_processor.process_document,
+            document_id=new_doc.id,
+            user_id=current_user.id,
+            filename=file.filename,
+            file_content=file_content,
+            file_hash=file_hash,
+        )
+        
+        await asyncio.to_thread(
+            vectorstore.add_documents,
+            ids=chunk_ids,
+            documents=chunk_texts,
+            metadatas=chunk_metadatas,
+        )
+        
+        new_doc.status = "completed"
+        new_doc.chunk_count = len(chunk_ids)
+        await db.commit()
+        
+    except Exception as e:
+        logger.error("Document ingestion failed for %s: %s", new_doc.id, e)
+        new_doc.status = "failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process document: {str(e)}"
+        )
 
     return DocumentUploadResponse(
         document_id=new_doc.id,
         filename=file.filename,
-        status="processing",
-        message="Document uploaded and queued for processing.",
+        status="completed",
+        message="Document uploaded and processed successfully.",
     )
 
 
@@ -156,27 +169,51 @@ async def replace_document(
     file_content = await file.read()
     file_hash = hashlib.sha256(file_content).hexdigest()
 
-    doc.status = "processing"
-    await db.commit()
-
-    # Save file temporarily for the worker
-    temp_file_path = os.path.join(TEMP_DOCS_DIR, f"{document_id}_{uuid.uuid4().hex[:8]}")
-    with open(temp_file_path, "wb") as f:
-        f.write(file_content)
-
-    replace_document_task(
-        document_id=document_id,
-        user_id=current_user.id,
-        filename=file.filename,
-        file_path=temp_file_path,
-        file_hash=file_hash,
-    )
+    # Process document synchronously in a thread pool
+    try:
+        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+            document_processor.process_document,
+            document_id=document_id,
+            user_id=current_user.id,
+            filename=file.filename,
+            file_content=file_content,
+            file_hash=file_hash,
+        )
+        
+        # Delete old vectors
+        await asyncio.to_thread(
+            vectorstore.delete_by_document_id,
+            document_id
+        )
+        
+        # Add new vectors
+        await asyncio.to_thread(
+            vectorstore.add_documents,
+            ids=chunk_ids,
+            documents=chunk_texts,
+            metadatas=chunk_metadatas,
+        )
+        
+        doc.status = "completed"
+        doc.filename = file.filename
+        doc.file_hash = file_hash
+        doc.chunk_count = len(chunk_ids)
+        await db.commit()
+        
+    except Exception as e:
+        logger.error("Document replacement failed for %s: %s", document_id, e)
+        doc.status = "failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process document: {str(e)}"
+        )
 
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename,
-        status="processing",
-        message="Document replacement queued for processing.",
+        status="completed",
+        message="Document replaced and processed successfully.",
     )
 
 

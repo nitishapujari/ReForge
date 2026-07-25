@@ -18,17 +18,6 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: reforge-redis
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   chroma:
     image: chromadb/chroma:latest
     container_name: reforge-chroma
@@ -50,13 +39,11 @@ services:
         condition: service_healthy
       chroma:
         condition: service_started
-      redis:
-        condition: service_healthy
+
     env_file:
       - ./backend/.env
     environment:
       - DATABASE_URL=postgresql+asyncpg://reforge:reforge@db:5432/reforge
-      - REDIS_URL=redis://redis:6379/0
       - CHROMA_HOST=chroma
       - CHROMA_PORT=8000
     volumes:
@@ -64,28 +51,6 @@ services:
     ports:
       - "8000:8000"
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
-
-  worker:
-    build:
-      context: ./backend
-    container_name: reforge-worker
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      chroma:
-        condition: service_started
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://reforge:reforge@db:5432/reforge
-      - REDIS_URL=redis://redis:6379/0
-      - CHROMA_HOST=chroma
-      - CHROMA_PORT=8000
-    volumes:
-      - reforge_documents:/app/storage/temp_docs
-    command: huey_consumer app.worker.huey
 
   frontend:
     build:

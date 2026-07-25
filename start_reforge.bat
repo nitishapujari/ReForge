@@ -10,7 +10,6 @@ start cmd /k "cd backend && call venv\Scripts\activate && chroma run --path stor
 echo Starting Backend API...
 start cmd /k "cd backend && call venv\Scripts\activate && uvicorn app.main:app --reload"
 
-echo Starting Background Worker...
-start cmd /k "cd backend && call venv\Scripts\activate && huey_consumer app.worker.huey"
+
 
 echo All services started! You can access the app at http://localhost:3000
