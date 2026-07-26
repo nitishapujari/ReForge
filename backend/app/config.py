@@ -7,6 +7,7 @@ Uses pydantic-settings for validation and type coercion.
 
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
 
 
 # Project root is the `backend/` directory
@@ -47,6 +48,16 @@ class Settings(BaseSettings):
     CHROMA_COLLECTION_NAME: str = "reforge_documents"
 
     DATABASE_URL: str = "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
+    
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_db_connection(cls, v: str | None) -> str:
+        if isinstance(v, str):
+            if v.startswith("postgres://"):
+                v = v.replace("postgres://", "postgresql://", 1)
+            if v.startswith("postgresql://"):
+                v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v or "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
 
     LOG_LEVEL: str = "INFO"
 
