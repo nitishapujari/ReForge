@@ -26,6 +26,7 @@ from app.models.database import get_db_session, get_session_factory
 from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
 from app.services import document_processor, vectorstore
+from app.services.document_processor import DocumentProcessingError
 from app.utils.logger import get_logger
 from datetime import datetime, timezone
 
@@ -119,6 +120,14 @@ async def upload_document(
         new_doc.chunk_count = len(chunk_ids)
         await db.commit()
         
+    except DocumentProcessingError as e:
+        logger.warning("Document processing error for %s: %s", new_doc.id, e)
+        new_doc.status = "failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document: {str(e)}"
+        )
     except Exception as e:
         logger.error("Document ingestion failed for %s: %s", new_doc.id, e)
         new_doc.status = "failed"
@@ -200,6 +209,14 @@ async def replace_document(
         doc.chunk_count = len(chunk_ids)
         await db.commit()
         
+    except DocumentProcessingError as e:
+        logger.warning("Document processing error during replacement for %s: %s", document_id, e)
+        doc.status = "failed"
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid document: {str(e)}"
+        )
     except Exception as e:
         logger.error("Document replacement failed for %s: %s", document_id, e)
         doc.status = "failed"
