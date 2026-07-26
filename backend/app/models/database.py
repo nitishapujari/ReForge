@@ -1,7 +1,7 @@
 """
 ReForge — Database Engine & Session.
 
-Async SQLAlchemy setup for SQLite. Provides:
+Async SQLAlchemy setup for PostgreSQL (and SQLite for local dev). Provides:
 - Async engine
 - Async session factory
 - Base class for ORM models

@@ -176,7 +176,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         )
                         session.add(new_doc)
                     await session.commit()
-                    logger.info("Migrated %d legacy ChromaDB documents to SQLite for user %s", len(legacy_docs), admin_user.id)
+                    logger.info("Migrated %d legacy ChromaDB documents to SQL Database for user %s", len(legacy_docs), admin_user.id)
         except Exception as e:
             logger.error("Failed to migrate legacy data: %s", e)
 
