@@ -232,7 +232,7 @@ export default function UploadPage() {
           updateTask(taskId, { status: "indexed successfully", progress: 100 })
         } else if (doc.status === "failed") {
           clearInterval(pollInterval)
-          updateTask(taskId, { status: "error", errorMsg: "Backend processing failed.", progress: 0 })
+          updateTask(taskId, { status: "error", errorMsg: doc.error_message || "Backend processing failed.", progress: 0 })
         } else {
           // Simulate progression
           stageIndex = Math.min(stageIndex + 1, STAGES.length - 1)
