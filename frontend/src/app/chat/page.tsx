@@ -966,6 +966,7 @@ function ChatContent() {
                   setMentionOpen(false)
                 }
               }}
+              modal={false}
             >
               <PopoverTrigger render={<div className="flex-1 relative" />} nativeButton={false}>
                   <TextareaAutosize
@@ -973,16 +974,20 @@ function ChatContent() {
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
+                    onBlur={() => {
+                      if (!mentionOpen) {
+                        setIsFocused(false)
+                      }
+                    }}
                     placeholder="Ask anything about your documents..."
                     className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full outline-none text-sm"
                     minRows={1}
                     maxRows={5}
                   />
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="start" sideOffset={10}>
+              <PopoverContent className="w-80 p-0 shadow-2xl border border-primary/20" align="start" side="top" sideOffset={12}>
                 <Command>
-                  <CommandList>
+                  <CommandList className="h-48 max-h-48 overflow-y-auto">
                     <CommandEmpty>No documents found.</CommandEmpty>
                     <CommandGroup>
                       {availableDocs.filter(doc => {
