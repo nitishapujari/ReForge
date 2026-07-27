@@ -35,6 +35,57 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
 
+async def run_ingestion_task(
+    document_id: str,
+    user_id: str,
+    filename: str,
+    file_content: bytes,
+    file_hash: str | None,
+    is_replace: bool = False,
+):
+    """Background task to process the document and update DB state."""
+    factory = get_session_factory()
+    async with factory() as db:
+        try:
+            _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+                document_processor.process_document,
+                document_id=document_id,
+                user_id=user_id,
+                filename=filename,
+                file_content=file_content,
+                file_hash=file_hash,
+            )
+            
+            if is_replace:
+                await asyncio.to_thread(
+                    vectorstore.delete_by_document_id,
+                    document_id
+                )
+                
+            await asyncio.to_thread(
+                vectorstore.add_documents,
+                ids=chunk_ids,
+                documents=chunk_texts,
+                metadatas=chunk_metadatas,
+            )
+            
+            doc = await db.get(Document, document_id)
+            if doc:
+                doc.status = "completed"
+                doc.chunk_count = len(chunk_ids)
+                await db.commit()
+                logger.info(f"Document {document_id} ingestion completed successfully.")
+                
+        except Exception as e:
+            logger.error("Document ingestion failed for %s: %s", document_id, e)
+            doc = await db.get(Document, document_id)
+            if doc:
+                doc.status = "failed"
+                doc.error_message = str(e)
+                await db.commit()
+
+
+
 
 
 
@@ -112,47 +163,22 @@ async def upload_document(
     await db.commit()
     await db.refresh(new_doc)
 
-    # Process document synchronously in a thread pool
-    try:
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=new_doc.id,
-            user_id=current_user.id,
-            filename=file.filename,
-            file_content=file_content,
-            file_hash=file_hash,
-        )
-        
-        await asyncio.to_thread(
-            vectorstore.add_documents,
-            ids=chunk_ids,
-            documents=chunk_texts,
-            metadatas=chunk_metadatas,
-        )
-        
-        new_doc.status = "completed"
-        new_doc.chunk_count = len(chunk_ids)
-        await db.commit()
-        
-    except DocumentProcessingError as e:
-        logger.warning("Document processing error for %s: %s", new_doc.id, e)
-        new_doc.status = "failed"
-        await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid document: {str(e)}"
-        )
-    except Exception as e:
-        logger.error("Document ingestion failed for %s: %s", new_doc.id, e)
-        new_doc.status = "failed"
-        await db.commit()
-        raise e
+    # Process document in the background
+    background_tasks.add_task(
+        run_ingestion_task,
+        document_id=new_doc.id,
+        user_id=current_user.id,
+        filename=file.filename,
+        file_content=file_content,
+        file_hash=file_hash,
+        is_replace=False,
+    )
 
     return DocumentUploadResponse(
         document_id=new_doc.id,
         filename=file.filename,
-        status="completed",
-        message="Document uploaded and processed successfully.",
+        status="processing",
+        message="Document uploaded and queued for processing.",
     )
 
 
@@ -202,56 +228,27 @@ async def replace_document(
         )
     file_hash = hashlib.sha256(file_content).hexdigest()
 
-    # Process document synchronously in a thread pool
-    try:
-        _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-            document_processor.process_document,
-            document_id=document_id,
-            user_id=current_user.id,
-            filename=file.filename,
-            file_content=file_content,
-            file_hash=file_hash,
-        )
-        
-        # Delete old vectors
-        await asyncio.to_thread(
-            vectorstore.delete_by_document_id,
-            document_id
-        )
-        
-        # Add new vectors
-        await asyncio.to_thread(
-            vectorstore.add_documents,
-            ids=chunk_ids,
-            documents=chunk_texts,
-            metadatas=chunk_metadatas,
-        )
-        
-        doc.status = "completed"
-        doc.filename = file.filename
-        doc.file_hash = file_hash
-        doc.chunk_count = len(chunk_ids)
-        await db.commit()
-        
-    except DocumentProcessingError as e:
-        logger.warning("Document processing error during replacement for %s: %s", document_id, e)
-        doc.status = "failed"
-        await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid document: {str(e)}"
-        )
-    except Exception as e:
-        logger.error("Document replacement failed for %s: %s", document_id, e)
-        doc.status = "failed"
-        await db.commit()
-        raise e
+    doc.status = "processing"
+    doc.filename = file.filename
+    doc.file_hash = file_hash
+    await db.commit()
+
+    # Process document in the background
+    background_tasks.add_task(
+        run_ingestion_task,
+        document_id=document_id,
+        user_id=current_user.id,
+        filename=file.filename,
+        file_content=file_content,
+        file_hash=file_hash,
+        is_replace=True,
+    )
 
     return DocumentUploadResponse(
         document_id=document_id,
         filename=file.filename,
-        status="completed",
-        message="Document replaced and processed successfully.",
+        status="processing",
+        message="Document replaced and queued for processing.",
     )
 
 
