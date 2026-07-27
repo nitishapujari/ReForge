@@ -6,6 +6,7 @@ Includes OCR fallback for scanned PDFs and semantic chunking.
 """
 
 import io
+import gc
 import uuid
 import re
 from datetime import datetime, timezone
@@ -75,12 +76,15 @@ def _parse_pdf_pymupdf(file_content: bytes) -> list[dict[str, str | int]]:
 def _parse_pdf_ocr(file_content: bytes) -> list[dict[str, str | int]]:
     """Fallback OCR parser for scanned PDFs using pdf2image and pytesseract."""
     try:
-        images = convert_from_bytes(file_content)
+        images = convert_from_bytes(file_content, fmt='jpeg')
         pages = []
         for i, img in enumerate(images, start=1):
             text = pytesseract.image_to_string(img)
             if text and text.strip():
                 pages.append({"text": text.strip(), "page_number": i})
+            img.close()
+        del images
+        gc.collect()
         return pages
     except Exception as e:
         logger.warning(f"OCR parsing failed: {e}")
@@ -277,5 +281,5 @@ def process_document(
         len(pages),
         chunk_counter,
     )
-
+    gc.collect()
     return document_id, chunk_ids, chunk_texts, chunk_metadatas

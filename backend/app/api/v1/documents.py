@@ -6,6 +6,7 @@ Document processing runs in the background via FastAPI BackgroundTasks.
 """
 
 import asyncio
+import gc
 import hashlib
 import os
 import uuid
@@ -48,12 +49,13 @@ async def run_ingestion_task(
     document_id: str,
     user_id: str,
     filename: str,
-    file_content: bytes,
+    file_content: bytes | None,
     file_hash: str | None,
     is_replace: bool = False,
 ):
     """Background task to process the document and update DB state, shielded from cancellation and DB locks."""
     async def _execute():
+        nonlocal file_content
         try:
             # Step 1: Process document and extract chunks (CPU bound, no DB session held)
             _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
@@ -65,6 +67,10 @@ async def run_ingestion_task(
                 file_hash=file_hash,
             )
             
+            # Free file_content from RAM before vector embedding
+            file_content = None
+            gc.collect()
+            
             # Step 2: Delete existing vector chunks if replacing (no DB session held)
             if is_replace:
                 await asyncio.to_thread(
@@ -72,12 +78,12 @@ async def run_ingestion_task(
                     document_id
                 )
                 
-            # Step 3: Add vector embeddings (CPU/Memory bound, no DB session held)
-            await asyncio.to_thread(
-                vectorstore.add_documents,
+            # Step 3: Add vector embeddings asynchronously in small batches (no DB session held)
+            await vectorstore.add_documents_async(
                 ids=chunk_ids,
                 documents=chunk_texts,
                 metadatas=chunk_metadatas,
+                batch_size=10,
             )
             
             # Step 4: ONLY NOW open a short-lived database session to update status

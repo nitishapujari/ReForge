@@ -5,6 +5,8 @@ Manages ChromaDB persistent client, collection operations, and embeddings
 using the all-MiniLM-L6-v2 sentence transformer model.
 """
 
+import asyncio
+import gc
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
@@ -121,6 +123,39 @@ def add_documents(
         if total > batch_size:
             logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
     logger.info("Completed adding all %d chunks to vector store", total)
+
+
+async def add_documents_async(
+    ids: list[str],
+    documents: list[str],
+    metadatas: list[dict],
+    batch_size: int = 15,
+) -> None:
+    """
+    Add document chunks to the vector store asynchronously in small batches.
+    Yields CPU to the Uvicorn event loop and runs garbage collection between batches
+    to prevent memory spikes, event loop starvation, and cloud container restarts.
+    """
+    collection = get_collection()
+    total = len(ids)
+    for i in range(0, total, batch_size):
+        batch_ids = ids[i : i + batch_size]
+        batch_docs = documents[i : i + batch_size]
+        batch_metas = metadatas[i : i + batch_size]
+
+        await asyncio.to_thread(
+            collection.add,
+            ids=batch_ids,
+            documents=batch_docs,
+            metadatas=batch_metas,
+        )
+
+        gc.collect()
+        if total > batch_size:
+            logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
+        await asyncio.sleep(0.05)
+
+    logger.info("Completed adding all %d chunks to vector store asynchronously", total)
 
 
 def delete_by_document_id(document_id: str) -> int:

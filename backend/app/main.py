@@ -184,6 +184,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                         session.add(new_doc)
                     await session.commit()
                     logger.info("Migrated %d legacy ChromaDB documents to SQL Database for user %s", len(legacy_docs), admin_user.id)
+            
+            # 5. Clean up orphaned documents stuck in "processing" from previous server shutdowns/restarts
+            orphaned = await session.execute(
+                text("UPDATE documents SET status = 'failed', error_message = 'Processing interrupted by server restart. Please delete and upload again.' WHERE status = 'processing'")
+            )
+            await session.commit()
+            if orphaned.rowcount > 0:
+                logger.warning("Marked %d orphaned 'processing' documents as 'failed'", orphaned.rowcount)
         except Exception as e:
             logger.error("Failed to migrate legacy data: %s", e)
 
