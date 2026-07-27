@@ -386,6 +386,17 @@ function ChatContent() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === "Escape" || e.key === "Tab")) {
+      if (e.key === "Escape") {
+        setMentionOpen(false)
+        e.preventDefault()
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        // Let cmdk handle selection when mention dropdown is open without sending message
+        return
+      }
+      return
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       if (!isGenerating) {
@@ -398,7 +409,7 @@ function ChatContent() {
     const val = e.target.value
     setInput(val)
     
-    const mentionMatch = val.match(/@([a-zA-Z0-9_\-\.]*)$/)
+    const mentionMatch = val.match(/(?:^|\s)@([a-zA-Z0-9_\-\.]*)$/)
     if (mentionMatch) {
       setMentionOpen(true)
     } else {
@@ -412,8 +423,8 @@ function ChatContent() {
     }
     setMentionOpen(false)
     
-    // Replace the @query with empty string to remove the mention text from input
-    const newValue = input.replace(/@([a-zA-Z0-9_\-\.]*)$/, '')
+    // Replace the @query with empty string to remove the mention text from input while preserving leading whitespace
+    const newValue = input.replace(/(^|\s)@([a-zA-Z0-9_\-\.]*)$/, '$1')
     setInput(newValue)
   }
 
@@ -948,7 +959,14 @@ function ChatContent() {
               <span className="sr-only">Upload</span>
             </Button>
             
-            <Popover open={mentionOpen} onOpenChange={setMentionOpen}>
+            <Popover 
+              open={mentionOpen} 
+              onOpenChange={(open) => {
+                if (!open) {
+                  setMentionOpen(false)
+                }
+              }}
+            >
               <PopoverTrigger render={<div className="flex-1 relative" />} nativeButton={false}>
                   <TextareaAutosize
                     value={input}
@@ -968,7 +986,7 @@ function ChatContent() {
                     <CommandEmpty>No documents found.</CommandEmpty>
                     <CommandGroup>
                       {availableDocs.filter(doc => {
-                        const mentionMatch = input.match(/@([a-zA-Z0-9_\-\.]*)$/)
+                        const mentionMatch = input.match(/(?:^|\s)@([a-zA-Z0-9_\-\.]*)$/)
                         const mentionQuery = mentionMatch ? mentionMatch[1].toLowerCase() : ""
                         return doc.filename.toLowerCase().includes(mentionQuery)
                       }).map((doc) => (
