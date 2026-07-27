@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
+    EMBEDDING_PROVIDER: str = "gemini"  # 'gemini' or 'onnx'
+    GEMINI_EMBEDDING_MODEL: str = "text-embedding-004"
+
     @property
     def active_api_key(self) -> str:
         """Returns the active API key based on the LLM_PROVIDER."""
