@@ -34,6 +34,13 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
+_active_tasks = set()
+
+def _fire_and_forget(task: asyncio.Task):
+    """Keep a strong reference to background tasks to prevent garbage collection."""
+    _active_tasks.add(task)
+    task.add_done_callback(_active_tasks.discard)
+
 
 async def run_ingestion_task(
     document_id: str,
@@ -43,46 +50,54 @@ async def run_ingestion_task(
     file_hash: str | None,
     is_replace: bool = False,
 ):
-    """Background task to process the document and update DB state."""
-    factory = get_session_factory()
-    async with factory() as db:
-        try:
-            _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-                document_processor.process_document,
-                document_id=document_id,
-                user_id=user_id,
-                filename=filename,
-                file_content=file_content,
-                file_hash=file_hash,
-            )
-            
-            if is_replace:
-                await asyncio.to_thread(
-                    vectorstore.delete_by_document_id,
-                    document_id
+    """Background task to process the document and update DB state, shielded from cancellation."""
+    async def _execute():
+        factory = get_session_factory()
+        async with factory() as db:
+            try:
+                _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+                    document_processor.process_document,
+                    document_id=document_id,
+                    user_id=user_id,
+                    filename=filename,
+                    file_content=file_content,
+                    file_hash=file_hash,
                 )
                 
-            await asyncio.to_thread(
-                vectorstore.add_documents,
-                ids=chunk_ids,
-                documents=chunk_texts,
-                metadatas=chunk_metadatas,
-            )
-            
-            doc = await db.get(Document, document_id)
-            if doc:
-                doc.status = "completed"
-                doc.chunk_count = len(chunk_ids)
-                await db.commit()
-                logger.info(f"Document {document_id} ingestion completed successfully.")
+                if is_replace:
+                    await asyncio.to_thread(
+                        vectorstore.delete_by_document_id,
+                        document_id
+                    )
+                    
+                await asyncio.to_thread(
+                    vectorstore.add_documents,
+                    ids=chunk_ids,
+                    documents=chunk_texts,
+                    metadatas=chunk_metadatas,
+                )
                 
-        except Exception as e:
-            logger.error("Document ingestion failed for %s: %s", document_id, e)
-            doc = await db.get(Document, document_id)
-            if doc:
-                doc.status = "failed"
-                doc.error_message = str(e)
-                await db.commit()
+                doc = await db.get(Document, document_id)
+                if doc:
+                    doc.status = "completed"
+                    doc.chunk_count = len(chunk_ids)
+                    await db.commit()
+                    logger.info(f"Document {document_id} ingestion completed successfully.")
+                    
+            except Exception as e:
+                logger.error("Document ingestion failed for %s: %s", document_id, e)
+                doc = await db.get(Document, document_id)
+                if doc:
+                    doc.status = "failed"
+                    doc.error_message = str(e)
+                    await db.commit()
+
+    task = asyncio.create_task(_execute())
+    _fire_and_forget(task)
+    try:
+        await asyncio.shield(task)
+    except asyncio.CancelledError:
+        logger.warning(f"Background task {document_id} was cancelled by HTTP disconnect, but ingestion continues in background.")
 
 
 
@@ -162,16 +177,18 @@ async def upload_document(
     db.add(new_doc)
     await db.commit()
 
-    # Process document in the background
-    background_tasks.add_task(
-        run_ingestion_task,
-        document_id=new_doc.id,
-        user_id=current_user.id,
-        filename=file.filename,
-        file_content=file_content,
-        file_hash=file_hash,
-        is_replace=False,
+    # Process document in the background detached from request lifecycle
+    task = asyncio.create_task(
+        run_ingestion_task(
+            document_id=new_doc.id,
+            user_id=current_user.id,
+            filename=file.filename,
+            file_content=file_content,
+            file_hash=file_hash,
+            is_replace=False,
+        )
     )
+    _fire_and_forget(task)
 
     return DocumentUploadResponse(
         document_id=new_doc.id,
@@ -232,16 +249,18 @@ async def replace_document(
     doc.file_hash = file_hash
     await db.commit()
 
-    # Process document in the background
-    background_tasks.add_task(
-        run_ingestion_task,
-        document_id=document_id,
-        user_id=current_user.id,
-        filename=file.filename,
-        file_content=file_content,
-        file_hash=file_hash,
-        is_replace=True,
+    # Process document in the background detached from request lifecycle
+    task = asyncio.create_task(
+        run_ingestion_task(
+            document_id=document_id,
+            user_id=current_user.id,
+            filename=file.filename,
+            file_content=file_content,
+            file_hash=file_hash,
+            is_replace=True,
+        )
     )
+    _fire_and_forget(task)
 
     return DocumentUploadResponse(
         document_id=document_id,

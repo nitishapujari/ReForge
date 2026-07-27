@@ -96,22 +96,29 @@ def add_documents(
     ids: list[str],
     documents: list[str],
     metadatas: list[dict],
+    batch_size: int = 25,
 ) -> None:
     """
-    Add document chunks to the vector store.
+    Add document chunks to the vector store in batches to prevent memory spikes.
 
     Args:
         ids: Unique IDs for each chunk.
         documents: Text content of each chunk.
         metadatas: Metadata dict for each chunk (document_id, filename, etc.).
+        batch_size: Number of chunks to embed and insert per batch.
     """
     collection = get_collection()
-    collection.add(
-        ids=ids,
-        documents=documents,
-        metadatas=metadatas,
-    )
-    logger.info("Added %d chunks to vector store", len(ids))
+    total = len(ids)
+    for i in range(0, total, batch_size):
+        batch_ids = ids[i : i + batch_size]
+        batch_docs = documents[i : i + batch_size]
+        batch_metas = metadatas[i : i + batch_size]
+        collection.add(
+            ids=batch_ids,
+            documents=batch_docs,
+            metadatas=batch_metas,
+        )
+    logger.info("Added %d chunks to vector store in batches of %d", total, batch_size)
 
 
 def delete_by_document_id(document_id: str) -> int:
