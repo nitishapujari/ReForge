@@ -303,6 +303,7 @@ async def list_documents(
             "chunk_count": doc.chunk_count,
             "created_at": doc.created_at.isoformat(),
             "status": doc.status,
+            "error_message": doc.error_message,
         }
         for doc in documents
     ]

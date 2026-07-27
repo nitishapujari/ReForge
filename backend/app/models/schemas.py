@@ -172,6 +172,7 @@ class DocumentResponse(BaseModel):
     chunk_count: int
     created_at: str
     status: str
+    error_message: str | None = None
 
 
 # Traces
