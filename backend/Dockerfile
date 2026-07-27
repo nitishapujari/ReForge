@@ -16,6 +16,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir email-validator==2.1.1
 
+# Pre-download ChromaDB default ONNX embedding model during build so it is never downloaded at runtime
+RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction; ef = DefaultEmbeddingFunction(); ef(['warmup'])"
+
 # Copy the rest of the application code
 COPY . .
 

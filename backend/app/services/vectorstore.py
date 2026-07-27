@@ -32,6 +32,13 @@ def init_vectorstore(collection_name: str) -> None:
     global _client, _collection, _embedding_fn
 
     _embedding_fn = DefaultEmbeddingFunction()
+    try:
+        # Warm up embedding model at startup so ONNX weights are loaded before handling uploads
+        logger.info("Warming up ONNX embedding model...")
+        _embedding_fn(["warmup"])
+        logger.info("ONNX embedding model warmed up successfully.")
+    except Exception as e:
+        logger.warning("Failed to warm up embedding function at startup: %s", e)
 
     from app.config import get_settings
     settings = get_settings()
