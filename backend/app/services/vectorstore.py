@@ -98,7 +98,7 @@ def add_documents(
     ids: list[str],
     documents: list[str],
     metadatas: list[dict],
-    batch_size: int = 15,
+    batch_size: int = 64,
 ) -> None:
     """
     Add document chunks to the vector store in batches to prevent memory spikes.
@@ -120,6 +120,8 @@ def add_documents(
             documents=batch_docs,
             metadatas=batch_metas,
         )
+        if (i // batch_size) % 5 == 4 or (i + batch_size >= total):
+            gc.collect()
         if total > batch_size:
             logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
     logger.info("Completed adding all %d chunks to vector store", total)
@@ -129,12 +131,12 @@ async def add_documents_async(
     ids: list[str],
     documents: list[str],
     metadatas: list[dict],
-    batch_size: int = 15,
+    batch_size: int = 64,
 ) -> None:
     """
-    Add document chunks to the vector store asynchronously in small batches.
-    Yields CPU to the Uvicorn event loop and runs garbage collection between batches
-    to prevent memory spikes, event loop starvation, and cloud container restarts.
+    Add document chunks to the vector store asynchronously in batches.
+    Yields CPU to the Uvicorn event loop and runs periodic garbage collection
+    to prevent memory spikes while maintaining high insertion throughput.
     """
     collection = get_collection()
     total = len(ids)
@@ -150,10 +152,11 @@ async def add_documents_async(
             metadatas=batch_metas,
         )
 
-        gc.collect()
+        if (i // batch_size) % 5 == 4 or (i + batch_size >= total):
+            gc.collect()
         if total > batch_size:
             logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.01)
 
     logger.info("Completed adding all %d chunks to vector store asynchronously", total)
 

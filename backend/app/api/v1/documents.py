@@ -78,12 +78,12 @@ async def run_ingestion_task(
                     document_id
                 )
                 
-            # Step 3: Add vector embeddings asynchronously in small batches (no DB session held)
+            # Step 3: Add vector embeddings asynchronously in batches (no DB session held)
             await vectorstore.add_documents_async(
                 ids=chunk_ids,
                 documents=chunk_texts,
                 metadatas=chunk_metadatas,
-                batch_size=10,
+                batch_size=64,
             )
             
             # Step 4: ONLY NOW open a short-lived database session to update status
