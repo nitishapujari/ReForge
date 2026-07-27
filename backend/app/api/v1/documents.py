@@ -161,7 +161,6 @@ async def upload_document(
     new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id)
     db.add(new_doc)
     await db.commit()
-    await db.refresh(new_doc)
 
     # Process document in the background
     background_tasks.add_task(
