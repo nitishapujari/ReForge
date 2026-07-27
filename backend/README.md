@@ -38,7 +38,9 @@ The Self-Healing RAG Pipeline — Backend API.
    cp .env.example .env
    ```
 
-   Edit `.env` and set your `GEMINI_API_KEY`.
+   **CRITICAL:** You must edit `.env` and set your `GEMINI_API_KEY`, `JWT_SECRET`, and `DATABASE_URL`. The application will not start without them.
+
+   > **Warning - Git History:** Secrets were previously hardcoded in this codebase. If you used this project in a production environment prior to this update, those old secrets (such as the JWT fallback) are still stored in your Git history. **Rotate any previously hardcoded secrets immediately.**
 
 ## Running the Server
 

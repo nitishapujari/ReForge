@@ -24,6 +24,13 @@ from app.models.database import init_db, close_db
 from app.services.llm import init_llm
 from app.services.vectorstore import init_vectorstore
 from app.utils.logger import configure_logging, get_logger
+from app.utils.rate_limit import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
+import uuid
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 
 logger = get_logger(__name__)
@@ -120,7 +127,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
             session.add(admin_user)
             await session.commit()
-            logger.info("Created default admin user: %s (UUID: %s)", admin_email, admin_user.id)
+            logger.info("Created default admin user (UUID: %s)", admin_user.id)
 
         # 3. Migrate Legacy Data (Assign orphaned records to admin)
         try:
@@ -208,14 +215,37 @@ def create_app() -> FastAPI:
         ),
         version="0.1.0",
         lifespan=lifespan,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url="/docs" if get_settings().ENVIRONMENT != "production" else None,
+        redoc_url="/redoc" if get_settings().ENVIRONMENT != "production" else None,
+        openapi_url="/openapi.json" if get_settings().ENVIRONMENT != "production" else None,
     )
+    
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        correlation_id = str(uuid.uuid4())
+        logger.error("Unhandled exception: %s | Correlation ID: %s", str(exc), correlation_id, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An internal server error occurred.",
+                "correlation_id": correlation_id
+            }
+        )
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000"],  # Next.js dev server
+        allow_origins=[get_settings().FRONTEND_URL],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

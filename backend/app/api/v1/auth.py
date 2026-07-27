@@ -11,6 +11,8 @@ from typing import Annotated
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from fastapi import Request
+from app.utils.rate_limit import limiter
 
 from app.api.deps import SessionDep, CurrentUser
 from app.models.user import User
@@ -41,15 +43,16 @@ import logging
 logger = logging.getLogger(__name__)
 
 @router.post("/register")
-async def register(user_in: UserRegister, db: SessionDep):
+@limiter.limit("3/minute")
+async def register(request: Request, user_in: UserRegister, db: SessionDep):
     """Register a new user with email and password."""
     # Ensure email is lowercase for case-insensitive matching
     email_lower = str(user_in.email).lower()
-    logger.info(f"[Auth] Registering user with email: {email_lower}")
+    logger.info("[Auth] Registering new user")
     
     try:
         hashed = get_password_hash(user_in.password)
-        logger.info(f"[Auth] Generated password hash for {email_lower}: {hashed}")
+        logger.debug("[Auth] Generated password hash for new user")
         new_user = User(
             first_name=user_in.first_name,
             last_name=user_in.last_name,
@@ -60,7 +63,7 @@ async def register(user_in: UserRegister, db: SessionDep):
         db.add(new_user)
         await db.commit()
         await db.refresh(new_user)
-        logger.info(f"[Auth] User {email_lower} successfully saved to DB with ID: {new_user.id}")
+        logger.info(f"[Auth] User successfully saved to DB with ID: {new_user.id}")
         
         # Auto-login after registration
         access_token_expires = timedelta(days=7)
@@ -74,7 +77,7 @@ async def register(user_in: UserRegister, db: SessionDep):
             "user": {"id": new_user.id, "email": new_user.email, "first_name": new_user.first_name, "last_name": new_user.last_name}
         }
     except IntegrityError:
-        logger.warning(f"[Auth] Registration failed for {email_lower} - email exists")
+        logger.warning("[Auth] Registration failed - email exists")
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -89,16 +92,17 @@ async def register(user_in: UserRegister, db: SessionDep):
 
 
 @router.post("/login")
-async def login(credentials: UserLogin, db: SessionDep):
+@limiter.limit("5/minute")
+async def login(request: Request, credentials: UserLogin, db: SessionDep):
     """Authenticate a user and return a JWT."""
     email_lower = str(credentials.email).lower()
-    logger.info(f"[Auth] Login attempt for email: {email_lower}")
+    logger.info("[Auth] Login attempt")
     
     result = await db.execute(select(User).where(User.email == email_lower))
     user = result.scalar_one_or_none()
     
     if not user:
-        logger.warning(f"[Auth] Login failed: User not found for email {email_lower}")
+        logger.warning("[Auth] Login failed: User not found")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -112,7 +116,7 @@ async def login(credentials: UserLogin, db: SessionDep):
         )
         
     if not user.hashed_password:
-        logger.warning(f"[Auth] Login failed: User {email_lower} has no hashed_password")
+        logger.warning("[Auth] Login failed: User has no hashed_password")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -125,13 +129,13 @@ async def login(credentials: UserLogin, db: SessionDep):
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    logger.info(f"[Auth] Found user {email_lower} with hash {user.hashed_password}. Verifying password...")
+    logger.info(f"[Auth] Found user {user.id}. Verifying password...")
     
     is_valid = verify_password(credentials.password, user.hashed_password)
-    logger.info(f"[Auth] Password verification result for {email_lower}: {is_valid}")
+    logger.info(f"[Auth] Password verification result for user {user.id}: {is_valid}")
     
     if not is_valid:
-        logger.warning(f"[Auth] Login failed: Password verification failed for {email_lower}")
+        logger.warning(f"[Auth] Login failed: Password verification failed for user {user.id}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -144,7 +148,7 @@ async def login(credentials: UserLogin, db: SessionDep):
             headers={"WWW-Authenticate": "Bearer"},
         )
         
-    logger.info(f"[Auth] Login successful for {email_lower}")
+    logger.info(f"[Auth] Login successful for user {user.id}")
         
     access_token_expires = timedelta(days=7)
     access_token = create_access_token(
@@ -160,11 +164,12 @@ async def login(credentials: UserLogin, db: SessionDep):
 
 
 @router.post("/swagger-login", include_in_schema=False)
-async def swagger_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: SessionDep):
+@limiter.limit("5/minute")
+async def swagger_login(request: Request, form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: SessionDep):
     """Dedicated login endpoint for Swagger UI's OAuth2 Password flow."""
     # OAuth2PasswordRequestForm uses 'username', which we map to our 'email' field
     credentials = UserLogin(email=form_data.username, password=form_data.password)
-    return await login(credentials, db)
+    return await login(request, credentials, db)
 
 
 @router.get("/me")

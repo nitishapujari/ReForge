@@ -246,15 +246,22 @@ function ChatContent() {
       const decoder = new TextDecoder("utf-8")
       let done = false
       let currentContent = ""
+      let buffer = ""
 
       while (!done) {
         const { value, done: readerDone } = await reader.read()
         done = readerDone
         if (value) {
-          const chunk = decoder.decode(value, { stream: true })
-          const lines = chunk.split("\n")
+          buffer += decoder.decode(value, { stream: true })
           
-          for (const line of lines) {
+          let boundaryIndex;
+          while ((boundaryIndex = buffer.indexOf('\n\n')) >= 0) {
+            const eventPayload = buffer.slice(0, boundaryIndex);
+            buffer = buffer.slice(boundaryIndex + 2);
+            
+            const lines = eventPayload.split("\n")
+            
+            for (const line of lines) {
             if (line.startsWith("data: ")) {
               const dataStr = line.replace("data: ", "").trim()
               if (!dataStr) continue
@@ -342,6 +349,7 @@ function ChatContent() {
               }
             }
           }
+        }
         }
       }
     } catch (error: any) {

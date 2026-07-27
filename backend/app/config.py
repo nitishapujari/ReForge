@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "storage/chromadb"
     CHROMA_COLLECTION_NAME: str = "reforge_documents"
 
-    DATABASE_URL: str = "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
+    DATABASE_URL: str
     
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
@@ -57,14 +57,18 @@ class Settings(BaseSettings):
                 v = v.replace("postgres://", "postgresql://", 1)
             if v.startswith("postgresql://"):
                 v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return v or "postgresql+asyncpg://reforge:reforge@db:5432/reforge"
+        if not v:
+            raise ValueError("DATABASE_URL is required in the environment.")
+        return v
+    FRONTEND_URL: str = "http://localhost:3000"
+    ENVIRONMENT: str = "development"
 
     LOG_LEVEL: str = "INFO"
 
     LANGSMITH_API_KEY: str | None = None
     LANGSMITH_PROJECT: str = "reforge"
 
-    JWT_SECRET: str = "super-secret-key-for-dev-only-change-in-prod"
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
 
     APP_TITLE: str = "ReForge API"

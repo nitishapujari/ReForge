@@ -10,7 +10,7 @@ export default withAuth(
         return NextResponse.next();
       }
 
-      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET || "super-secret-key-for-dev-only-change-in-prod" });
+      const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET as string });
       
       const requestHeaders = new Headers(req.headers);
       if (token?.accessToken) {
@@ -20,6 +20,8 @@ export default withAuth(
       const backendBase = process.env.BACKEND_URL || "http://127.0.0.1:8000";
       const backendUrl = new URL(req.nextUrl.pathname, backendBase);
       backendUrl.search = req.nextUrl.search;
+
+      requestHeaders.delete("host");
 
       return NextResponse.rewrite(backendUrl, {
         request: {

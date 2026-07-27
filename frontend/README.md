@@ -2,7 +2,17 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+First, configure your environment variables:
+
+```bash
+cp .env.example .env.local
+```
+
+**CRITICAL:** You must edit `.env.local` and set a secure `NEXTAUTH_SECRET`. The application will not start correctly without it.
+
+> **Warning - Git History:** Secrets were previously hardcoded in this codebase. If you used this project in a production environment prior to this update, those old secrets (such as the NEXTAUTH_SECRET fallback) are still stored in your Git history. **Rotate any previously hardcoded secrets immediately.**
+
+Next, run the development server:
 
 ```bash
 npm run dev

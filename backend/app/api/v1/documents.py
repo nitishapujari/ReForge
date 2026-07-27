@@ -64,8 +64,22 @@ async def upload_document(
             detail="No filename provided.",
         )
 
+    allowed_types = ["application/pdf", "text/plain"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported media type. Only PDF and TXT are allowed.",
+        )
+
     # Read file content and compute hash
     file_content = await file.read()
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 20MB.",
+        )
+        
     file_hash = hashlib.sha256(file_content).hexdigest()
 
     # Check for duplicate
@@ -132,10 +146,7 @@ async def upload_document(
         logger.error("Document ingestion failed for %s: %s", new_doc.id, e)
         new_doc.status = "failed"
         await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process document: {str(e)}"
-        )
+        raise e
 
     return DocumentUploadResponse(
         document_id=new_doc.id,
@@ -168,6 +179,13 @@ async def replace_document(
             detail="No filename provided.",
         )
 
+    allowed_types = ["application/pdf", "text/plain"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Unsupported media type. Only PDF and TXT are allowed.",
+        )
+
     doc = await db.get(Document, document_id)
     if not doc or doc.user_id != current_user.id or doc.is_deleted:
         raise HTTPException(
@@ -176,6 +194,12 @@ async def replace_document(
         )
 
     file_content = await file.read()
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    if len(file_content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 20MB.",
+        )
     file_hash = hashlib.sha256(file_content).hexdigest()
 
     # Process document synchronously in a thread pool
@@ -221,10 +245,7 @@ async def replace_document(
         logger.error("Document replacement failed for %s: %s", document_id, e)
         doc.status = "failed"
         await db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process document: {str(e)}"
-        )
+        raise e
 
     return DocumentUploadResponse(
         document_id=document_id,
