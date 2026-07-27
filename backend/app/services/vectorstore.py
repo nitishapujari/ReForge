@@ -25,10 +25,10 @@ _embedding_fn: chromadb.EmbeddingFunction | None = None
 class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
     """
     ChromaDB EmbeddingFunction implementation using the google-genai SDK.
-    Offloads embedding generation to Google Gemini API (e.g., text-embedding-004),
+    Offloads embedding generation to Google Gemini API (e.g., gemini-embedding-001),
     preventing local memory spikes and vCPU starvation on constrained cloud instances.
     """
-    def __init__(self, api_key: str, model_name: str = "text-embedding-004") -> None:
+    def __init__(self, api_key: str, model_name: str = "gemini-embedding-001") -> None:
         from google import genai
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
