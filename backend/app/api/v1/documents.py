@@ -9,6 +9,8 @@ import asyncio
 import gc
 import hashlib
 import os
+import time
+import traceback
 import uuid
 from fastapi import (
     APIRouter,
@@ -56,8 +58,11 @@ async def run_ingestion_task(
     """Background task to process the document and update DB state, shielded from cancellation and DB locks."""
     async def _execute():
         nonlocal file_content
+        task_start = time.perf_counter()
+        logger.info("[Ingestion Task Started] Document ID: %s | Filename: '%s' | User ID: %s | Initial DB Status transition: processing", document_id, filename, user_id)
         try:
             # Step 1: Process document and extract chunks (CPU bound, no DB session held)
+            step1_start = time.perf_counter()
             _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
                 document_processor.process_document,
                 document_id=document_id,
@@ -66,6 +71,7 @@ async def run_ingestion_task(
                 file_content=file_content,
                 file_hash=file_hash,
             )
+            logger.info("[Step 1 Success] Parsing & Chunking completed in %.2fs | Chunks generated: %d", time.perf_counter() - step1_start, len(chunk_ids))
             
             # Free file_content from RAM before vector embedding
             file_content = None
@@ -73,18 +79,22 @@ async def run_ingestion_task(
             
             # Step 2: Delete existing vector chunks if replacing (no DB session held)
             if is_replace:
-                await asyncio.to_thread(
+                step2_start = time.perf_counter()
+                deleted_count = await asyncio.to_thread(
                     vectorstore.delete_by_document_id,
                     document_id
                 )
+                logger.info("[Step 2 Success] Deleted %d existing vectors for replace in %.2fs", deleted_count, time.perf_counter() - step2_start)
                 
             # Step 3: Add vector embeddings asynchronously in batches (no DB session held)
+            step3_start = time.perf_counter()
             await vectorstore.add_documents_async(
                 ids=chunk_ids,
                 documents=chunk_texts,
                 metadatas=chunk_metadatas,
                 batch_size=64,
             )
+            logger.info("[Step 3 Success] Vector embeddings and ChromaDB insertion finished in %.2fs", time.perf_counter() - step3_start)
             
             # Step 4: ONLY NOW open a short-lived database session to update status
             factory = get_session_factory()
@@ -93,28 +103,31 @@ async def run_ingestion_task(
                 if doc:
                     doc.status = "completed"
                     doc.chunk_count = len(chunk_ids)
+                    doc.error_message = None
                     await db.commit()
-                    logger.info(f"Document {document_id} ingestion completed successfully.")
+                    logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> completed | Chunk Count: %d | Total Ingestion Time: %.2fs", document_id, len(chunk_ids), time.perf_counter() - task_start)
                 
         except Exception as e:
-            logger.error("Document ingestion failed for %s: %s", document_id, e)
+            total_fail_time = time.perf_counter() - task_start
+            logger.error("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.\nException: %r\nTraceback:\n%s", document_id, filename, total_fail_time, e, traceback.format_exc())
             try:
                 factory = get_session_factory()
                 async with factory() as db:
                     doc = await db.get(Document, document_id)
                     if doc:
                         doc.status = "failed"
-                        doc.error_message = str(e)
+                        doc.error_message = f"{type(e).__name__}: {str(e)}"
                         await db.commit()
+                        logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> failed | Error: %s", document_id, doc.error_message)
             except Exception as db_err:
-                logger.error("Failed to update status to failed for %s: %s", document_id, db_err)
+                logger.error("[Database Fatal] Failed to update status to failed for %s.\nException: %r\nTraceback:\n%s", document_id, db_err, traceback.format_exc())
 
     task = asyncio.create_task(_execute())
     _fire_and_forget(task)
     try:
         await asyncio.shield(task)
     except asyncio.CancelledError:
-        logger.warning(f"Background task {document_id} was cancelled by HTTP disconnect, but ingestion continues in background.")
+        logger.warning(f"[Ingestion Task Detached] Task for document {document_id} was cancelled by HTTP disconnect, but background ingestion continues undisturbed.")
 
 
 
@@ -207,6 +220,7 @@ async def upload_document(
         )
     )
     _fire_and_forget(task)
+    logger.info("[Upload Completed] Successfully created DB record %s and scheduled detached background ingestion task for file: '%s' (%d bytes)", new_doc.id, file.filename, len(file_content) if file_content else 0)
 
     return DocumentUploadResponse(
         document_id=new_doc.id,
@@ -266,6 +280,7 @@ async def replace_document(
         )
     )
     _fire_and_forget(task)
+    logger.info("[Replace Completed] Scheduled detached background ingestion task for replacing document %s with file: '%s' (%d bytes)", document_id, file.filename, len(file_content) if file_content else 0)
 
     return DocumentUploadResponse(
         document_id=document_id,

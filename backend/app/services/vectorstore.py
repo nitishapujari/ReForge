@@ -7,6 +7,7 @@ using the all-MiniLM-L6-v2 sentence transformer model.
 
 import asyncio
 import gc
+import time
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
@@ -140,25 +141,43 @@ async def add_documents_async(
     """
     collection = get_collection()
     total = len(ids)
-    for i in range(0, total, batch_size):
-        batch_ids = ids[i : i + batch_size]
-        batch_docs = documents[i : i + batch_size]
-        batch_metas = metadatas[i : i + batch_size]
+    start_time = time.perf_counter()
+    logger.info("[Embedding & ChromaDB] Starting async embedding generation and insertion for %d chunks (batch_size=%d)...", total, batch_size)
 
-        await asyncio.to_thread(
-            collection.add,
-            ids=batch_ids,
-            documents=batch_docs,
-            metadatas=batch_metas,
-        )
+    inserted_count = 0
+    try:
+        for i in range(0, total, batch_size):
+            batch_start = time.perf_counter()
+            batch_ids = ids[i : i + batch_size]
+            batch_docs = documents[i : i + batch_size]
+            batch_metas = metadatas[i : i + batch_size]
 
-        if (i // batch_size) % 5 == 4 or (i + batch_size >= total):
-            gc.collect()
-        if total > batch_size:
-            logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
-        await asyncio.sleep(0.01)
+            try:
+                await asyncio.to_thread(
+                    collection.add,
+                    ids=batch_ids,
+                    documents=batch_docs,
+                    metadatas=batch_metas,
+                )
+            except Exception as e:
+                logger.error("[Embedding & ChromaDB Error] Failed to generate embeddings or insert batch %d-%d: %s", i + 1, min(i + batch_size, total), e, exc_info=True)
+                raise
 
-    logger.info("Completed adding all %d chunks to vector store asynchronously", total)
+            inserted_count += len(batch_ids)
+            batch_time = time.perf_counter() - batch_start
+
+            if (i // batch_size) % 5 == 4 or (i + batch_size >= total):
+                gc.collect()
+            if total > batch_size or inserted_count == total:
+                logger.info("[ChromaDB Insertion] Inserted batch %d-%d of %d chunks in %.2fs | Total vectors inserted: %d", i + 1, min(i + batch_size, total), total, batch_time, inserted_count)
+            await asyncio.sleep(0.01)
+
+        total_time = time.perf_counter() - start_time
+        logger.info("[Embedding & ChromaDB Success] Verified %d vectors inserted into ChromaDB in %.2f seconds (%.2f chunks/sec)", inserted_count, total_time, inserted_count / total_time if total_time > 0 else 0)
+    except Exception as e:
+        total_time = time.perf_counter() - start_time
+        logger.error("[Embedding & ChromaDB Fatal] Ingestion failed after %.2fs with %d/%d chunks inserted: %s", total_time, inserted_count, total, e, exc_info=True)
+        raise
 
 
 def delete_by_document_id(document_id: str) -> int:

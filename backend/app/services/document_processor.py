@@ -107,7 +107,8 @@ def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
             pages = []
             
         if pages:
-            logger.info("%s extracted %d pages", name, len(pages))
+            total_chars = sum(len(str(p.get("text", ""))) for p in pages)
+            logger.info("[Parser Success] Selected parser: '%s' | Pages extracted: %d | Total text length: %d chars", name, len(pages), total_chars)
             return pages
             
         logger.info("%s extracted 0 pages", name)
@@ -274,12 +275,16 @@ def process_document(
                 
             chunk_metadatas.append(meta)
 
+    total_text_len = sum(len(str(p.get("text", ""))) for p in pages)
+    avg_chunk_size = int(sum(len(c) for c in chunk_texts) / len(chunk_texts)) if chunk_texts else 0
     logger.info(
-        "Processed '%s': document_id=%s, pages=%d, chunks=%d",
+        "[Chunking Completed] Filename: '%s' | Document ID: %s | Pages: %d | Extracted Text Length: %d chars | Total Chunks: %d | Average Chunk Size: %d chars",
         filename,
         document_id,
         len(pages),
+        total_text_len,
         chunk_counter,
+        avg_chunk_size,
     )
     gc.collect()
     return document_id, chunk_ids, chunk_texts, chunk_metadatas
