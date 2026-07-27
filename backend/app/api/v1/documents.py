@@ -269,6 +269,9 @@ async def list_documents(
     result = await db.execute(stmt)
     documents = result.scalars().all()
     
+    # Release the SQLite SHARED lock immediately so background tasks can write
+    await db.commit()
+    
     return [
         {
             "document_id": doc.id,
