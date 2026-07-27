@@ -18,10 +18,12 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import CurrentUser
+from app.constants import ALLOWED_EXTENSIONS
 from app.models.database import get_db_session, get_session_factory
 from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
@@ -50,47 +52,56 @@ async def run_ingestion_task(
     file_hash: str | None,
     is_replace: bool = False,
 ):
-    """Background task to process the document and update DB state, shielded from cancellation."""
+    """Background task to process the document and update DB state, shielded from cancellation and DB locks."""
     async def _execute():
-        factory = get_session_factory()
-        async with factory() as db:
-            try:
-                _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
-                    document_processor.process_document,
-                    document_id=document_id,
-                    user_id=user_id,
-                    filename=filename,
-                    file_content=file_content,
-                    file_hash=file_hash,
-                )
-                
-                if is_replace:
-                    await asyncio.to_thread(
-                        vectorstore.delete_by_document_id,
-                        document_id
-                    )
-                    
+        try:
+            # Step 1: Process document and extract chunks (CPU bound, no DB session held)
+            _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
+                document_processor.process_document,
+                document_id=document_id,
+                user_id=user_id,
+                filename=filename,
+                file_content=file_content,
+                file_hash=file_hash,
+            )
+            
+            # Step 2: Delete existing vector chunks if replacing (no DB session held)
+            if is_replace:
                 await asyncio.to_thread(
-                    vectorstore.add_documents,
-                    ids=chunk_ids,
-                    documents=chunk_texts,
-                    metadatas=chunk_metadatas,
+                    vectorstore.delete_by_document_id,
+                    document_id
                 )
                 
+            # Step 3: Add vector embeddings (CPU/Memory bound, no DB session held)
+            await asyncio.to_thread(
+                vectorstore.add_documents,
+                ids=chunk_ids,
+                documents=chunk_texts,
+                metadatas=chunk_metadatas,
+            )
+            
+            # Step 4: ONLY NOW open a short-lived database session to update status
+            factory = get_session_factory()
+            async with factory() as db:
                 doc = await db.get(Document, document_id)
                 if doc:
                     doc.status = "completed"
                     doc.chunk_count = len(chunk_ids)
                     await db.commit()
                     logger.info(f"Document {document_id} ingestion completed successfully.")
-                    
-            except Exception as e:
-                logger.error("Document ingestion failed for %s: %s", document_id, e)
-                doc = await db.get(Document, document_id)
-                if doc:
-                    doc.status = "failed"
-                    doc.error_message = str(e)
-                    await db.commit()
+                
+        except Exception as e:
+            logger.error("Document ingestion failed for %s: %s", document_id, e)
+            try:
+                factory = get_session_factory()
+                async with factory() as db:
+                    doc = await db.get(Document, document_id)
+                    if doc:
+                        doc.status = "failed"
+                        doc.error_message = str(e)
+                        await db.commit()
+            except Exception as db_err:
+                logger.error("Failed to update status to failed for %s: %s", document_id, db_err)
 
     task = asyncio.create_task(_execute())
     _fire_and_forget(task)
@@ -104,22 +115,36 @@ async def run_ingestion_task(
 
 
 
+def _validate_upload(filename: str, content: bytes) -> None:
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported file type '{ext}'. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File too large. Maximum size is 20MB.",
+        )
+
+
 @router.post(
     "/upload",
     response_model=DocumentUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload Document",
     description=(
-        "Upload a PDF or TXT file for ingestion. "
+        "Upload a document for ingestion. "
         "The file is chunked and indexed in the background. "
         "Returns immediately with a document ID."
     ),
 )
 async def upload_document(
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     file: UploadFile = File(
-        ..., description="PDF or TXT file to upload (max 20MB)"
+        ..., description="File to upload (max 20MB)"
     ),
     db: AsyncSession = Depends(get_db_session),
 ) -> DocumentUploadResponse:
@@ -130,21 +155,8 @@ async def upload_document(
             detail="No filename provided.",
         )
 
-    allowed_types = ["application/pdf", "text/plain"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported media type. Only PDF and TXT are allowed.",
-        )
-
-    # Read file content and compute hash
     file_content = await file.read()
-    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-    if len(file_content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large. Maximum size is 20MB.",
-        )
+    _validate_upload(file.filename, file_content)
         
     file_hash = hashlib.sha256(file_content).hexdigest()
 
@@ -207,10 +219,9 @@ async def upload_document(
 )
 async def replace_document(
     document_id: str,
-    background_tasks: BackgroundTasks,
     current_user: CurrentUser,
     file: UploadFile = File(
-        ..., description="PDF or TXT file to upload (max 20MB)"
+        ..., description="File to upload (max 20MB)"
     ),
     db: AsyncSession = Depends(get_db_session),
 ) -> DocumentUploadResponse:
@@ -221,13 +232,6 @@ async def replace_document(
             detail="No filename provided.",
         )
 
-    allowed_types = ["application/pdf", "text/plain"]
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Unsupported media type. Only PDF and TXT are allowed.",
-        )
-
     doc = await db.get(Document, document_id)
     if not doc or doc.user_id != current_user.id or doc.is_deleted:
         raise HTTPException(
@@ -236,12 +240,7 @@ async def replace_document(
         )
 
     file_content = await file.read()
-    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-    if len(file_content) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large. Maximum size is 20MB.",
-        )
+    _validate_upload(file.filename, file_content)
     file_hash = hashlib.sha256(file_content).hexdigest()
 
     doc.status = "processing"

@@ -96,7 +96,7 @@ def add_documents(
     ids: list[str],
     documents: list[str],
     metadatas: list[dict],
-    batch_size: int = 25,
+    batch_size: int = 15,
 ) -> None:
     """
     Add document chunks to the vector store in batches to prevent memory spikes.
@@ -118,7 +118,9 @@ def add_documents(
             documents=batch_docs,
             metadatas=batch_metas,
         )
-    logger.info("Added %d chunks to vector store in batches of %d", total, batch_size)
+        if total > batch_size:
+            logger.info("Inserted batch %d-%d of %d chunks into ChromaDB", i + 1, min(i + batch_size, total), total)
+    logger.info("Completed adding all %d chunks to vector store", total)
 
 
 def delete_by_document_id(document_id: str) -> int:
