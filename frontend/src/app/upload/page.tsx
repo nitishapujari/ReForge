@@ -7,7 +7,7 @@ import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Loader2, X } 
 import { motion, AnimatePresence } from "framer-motion"
 import { useSession } from "next-auth/react"
 
-type TaskStatus = "idle" | "uploading" | "extracting text" | "chunking document" | "generating embeddings" | "saving document" | "indexed successfully" | "duplicate" | "error" | "canceled"
+type TaskStatus = "idle" | "uploading" | "extracting text" | "generating embeddings" | "indexing document" | "indexed successfully" | "duplicate" | "error" | "canceled"
 
 interface UploadTask {
   id: string
@@ -22,10 +22,20 @@ interface UploadTask {
 
 const STAGES: TaskStatus[] = [
   "extracting text",
-  "chunking document",
   "generating embeddings",
-  "saving document"
+  "indexing document"
 ]
+
+const formatStatus = (status: TaskStatus) => {
+  switch (status) {
+    case "uploading": return "Uploading document..."
+    case "extracting text": return "Extracting text..."
+    case "generating embeddings": return "Generating embeddings..."
+    case "indexing document": return "Indexing document..."
+    case "indexed successfully": return "Indexed successfully ✓"
+    default: return status
+  }
+}
 
 function DataParticles({ active }: { active: boolean }) {
   if (!active) return null
@@ -478,8 +488,8 @@ export default function UploadPage() {
                   <div className="flex items-center gap-2 text-xs opacity-80 mt-1">
                     <span>{formatSize(task.file.size)}</span>
                     <span>•</span>
-                    <span className="capitalize font-medium">
-                      {task.status}
+                    <span className="font-medium">
+                      {formatStatus(task.status)}
                     </span>
                   </div>
                 </div>
