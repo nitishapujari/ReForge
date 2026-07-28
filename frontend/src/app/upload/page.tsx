@@ -135,12 +135,22 @@ export default function UploadPage() {
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      console.log("Upload targeting backendUrl:", backendUrl)
+      console.log("Raw NEXT_PUBLIC_BACKEND_URL:", process.env.NEXT_PUBLIC_BACKEND_URL)
+
+      if (!backendUrl) {
+        throw new Error("NEXT_PUBLIC_BACKEND_URL is missing. Please set it in Vercel and redeploy.")
+      }
+
       const headers: HeadersInit = {}
       if ((session as any)?.accessToken) {
         headers["Authorization"] = `Bearer ${(session as any).accessToken}`
       }
 
-      const response = await fetch(`${backendUrl}/api/v1/documents/upload`, {
+      const requestUrl = `${backendUrl.replace(/\/+$/, '')}/api/v1/documents/upload`
+      console.log("Exact Request URL:", requestUrl)
+
+      const response = await fetch(requestUrl, {
         method: "POST",
         body: formData,
         signal: abortController.signal,
@@ -218,12 +228,17 @@ export default function UploadPage() {
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      if (!backendUrl) {
+        throw new Error("NEXT_PUBLIC_BACKEND_URL is missing. Please set it in Vercel and redeploy.")
+      }
+
       const headers: HeadersInit = {}
       if ((session as any)?.accessToken) {
         headers["Authorization"] = `Bearer ${(session as any).accessToken}`
       }
 
-      const response = await fetch(`${backendUrl}/api/v1/documents/${task.duplicateData.existing_document_id}`, {
+      const requestUrl = `${backendUrl.replace(/\/+$/, '')}/api/v1/documents/${task.duplicateData.existing_document_id}`
+      const response = await fetch(requestUrl, {
         method: "PUT",
         body: formData,
         signal: abortController.signal,
