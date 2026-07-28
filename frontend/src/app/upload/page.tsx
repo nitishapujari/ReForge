@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { UploadCloud, FileText, Trash2, CheckCircle2, AlertCircle, Loader2, X } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import { useSession } from "next-auth/react"
 
 type TaskStatus = "idle" | "uploading" | "extracting text" | "chunking document" | "generating embeddings" | "saving document" | "indexed successfully" | "duplicate" | "error" | "canceled"
 
@@ -45,6 +46,7 @@ function DataParticles({ active }: { active: boolean }) {
 }
 
 export default function UploadPage() {
+  const { data: session } = useSession()
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -132,10 +134,17 @@ export default function UploadPage() {
     formData.append("file", task.file)
 
     try {
-      const response = await fetch("/api/v1/documents/upload", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      const headers: HeadersInit = {}
+      if ((session as any)?.accessToken) {
+        headers["Authorization"] = `Bearer ${(session as any).accessToken}`
+      }
+
+      const response = await fetch(`${backendUrl}/api/v1/documents/upload`, {
         method: "POST",
         body: formData,
-        signal: abortController.signal
+        signal: abortController.signal,
+        headers
       })
 
       if (!response.ok) {
@@ -208,10 +217,17 @@ export default function UploadPage() {
     formData.append("file", task.file)
 
     try {
-      const response = await fetch(`/api/v1/documents/${task.duplicateData.existing_document_id}`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      const headers: HeadersInit = {}
+      if ((session as any)?.accessToken) {
+        headers["Authorization"] = `Bearer ${(session as any).accessToken}`
+      }
+
+      const response = await fetch(`${backendUrl}/api/v1/documents/${task.duplicateData.existing_document_id}`, {
         method: "PUT",
         body: formData,
-        signal: abortController.signal
+        signal: abortController.signal,
+        headers
       })
 
       if (!response.ok) {
