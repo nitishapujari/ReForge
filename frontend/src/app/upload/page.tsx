@@ -45,6 +45,25 @@ function DataParticles({ active }: { active: boolean }) {
   )
 }
 
+const getFriendlyErrorMessage = (error: any, status?: number): string => {
+  const msg = error?.message || String(error)
+  const lowerMsg = msg.toLowerCase()
+  
+  if (status === 429 || lowerMsg.includes("quota exceeded") || lowerMsg.includes("rate limit") || lowerMsg.includes("429")) {
+    return "Embedding service quota reached. Please try again later."
+  }
+  if (lowerMsg.includes("failed to fetch") || lowerMsg.includes("network error") || lowerMsg.includes("econnrefused")) {
+    return "Unable to connect to the server. Please check your connection and try again."
+  }
+  if (status === 413 || lowerMsg.includes("too large") || lowerMsg.includes("size limit")) {
+    return "The selected file exceeds the maximum allowed size."
+  }
+  if (status === 415 || lowerMsg.includes("unsupported") || lowerMsg.includes("invalid type")) {
+    return "This file type is not supported."
+  }
+  return "Failed to process the document. Please try again."
+}
+
 export default function UploadPage() {
   const { data: session } = useSession()
   const [tasks, setTasks] = useState<UploadTask[]>([])
@@ -158,12 +177,14 @@ export default function UploadPage() {
       })
 
       if (!response.ok) {
-        let errorText = "Failed to upload document."
+        let detailedError = "Failed to upload document."
         try {
           const errJson = await response.json()
-          if (errJson.detail) errorText = errJson.detail
+          if (errJson.detail) detailedError = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail)
         } catch (e) {}
-        throw new Error(errorText)
+        const error = new Error(detailedError)
+        ;(error as any).status = response.status
+        throw error
       }
 
       const data = await response.json()
@@ -211,7 +232,9 @@ export default function UploadPage() {
             }
           }
         } catch (e) {}
-        updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
+        console.error("Upload error details:", err)
+        const friendlyMsg = getFriendlyErrorMessage(err, err.status)
+        updateTask(taskId, { status: "error", errorMsg: friendlyMsg, progress: 0 })
       }
     }
   }
@@ -246,12 +269,14 @@ export default function UploadPage() {
       })
 
       if (!response.ok) {
-        let errorText = "Failed to replace document."
+        let detailedError = "Failed to replace document."
         try {
           const errJson = await response.json()
-          if (errJson.detail) errorText = errJson.detail
+          if (errJson.detail) detailedError = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail)
         } catch (e) {}
-        throw new Error(errorText)
+        const error = new Error(detailedError)
+        ;(error as any).status = response.status
+        throw error
       }
 
       const data = await response.json()
@@ -286,7 +311,9 @@ export default function UploadPage() {
             }
           }
         } catch (e) {}
-        updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
+        console.error("Upload error details:", err)
+        const friendlyMsg = getFriendlyErrorMessage(err, err.status)
+        updateTask(taskId, { status: "error", errorMsg: friendlyMsg, progress: 0 })
       }
     }
   }
