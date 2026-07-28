@@ -169,6 +169,29 @@ export default function UploadPage() {
       if (err.name === "AbortError") {
         updateTask(taskId, { status: "canceled", progress: 0 })
       } else {
+        try {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1000))
+            const res = await fetch("/api/v1/documents")
+            if (res.ok) {
+              const docs = await res.json()
+              const existing = docs.find((d: any) => d.filename === task.file.name)
+              if (existing && existing.status !== "failed") {
+                const isCompleted = existing.status === "completed"
+                updateTask(taskId, {
+                  document_id: existing.document_id,
+                  status: isCompleted ? "indexed successfully" : STAGES[0],
+                  progress: isCompleted ? 100 : 20,
+                  errorMsg: undefined
+                })
+                if (!isCompleted) {
+                  startPolling(taskId, existing.document_id)
+                }
+                return
+              }
+            }
+          }
+        } catch (e) {}
         updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
       }
     }
@@ -208,6 +231,30 @@ export default function UploadPage() {
       if (err.name === "AbortError") {
         updateTask(taskId, { status: "canceled", progress: 0 })
       } else {
+        try {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            if (attempt > 0) await new Promise(r => setTimeout(r, 1000))
+            const res = await fetch("/api/v1/documents")
+            if (res.ok) {
+              const docs = await res.json()
+              const docId = task.duplicateData?.existing_document_id
+              const existing = docs.find((d: any) => d.document_id === docId || d.filename === task.file.name)
+              if (existing && existing.status !== "failed") {
+                const isCompleted = existing.status === "completed"
+                updateTask(taskId, {
+                  document_id: existing.document_id,
+                  status: isCompleted ? "indexed successfully" : STAGES[0],
+                  progress: isCompleted ? 100 : 20,
+                  errorMsg: undefined
+                })
+                if (!isCompleted) {
+                  startPolling(taskId, existing.document_id)
+                }
+                return
+              }
+            }
+          }
+        } catch (e) {}
         updateTask(taskId, { status: "error", errorMsg: err.message || "An unexpected error occurred.", progress: 0 })
       }
     }
