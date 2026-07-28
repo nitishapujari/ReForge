@@ -55,7 +55,6 @@ function ChatContent() {
   const [availableDocs, setAvailableDocs] = useState<{ document_id: string, filename: string }[]>([])
   const [selectedDocs, setSelectedDocs] = useState<{ document_id: string, filename: string }[]>([])
   const [mentionOpen, setMentionOpen] = useState(false)
-  const [isFocused, setIsFocused] = useState(false)
 
   useEffect(() => {
     fetch("/api/v1/documents")
@@ -972,8 +971,6 @@ function ChatContent() {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  onFocus={() => setIsFocused(true)}
-                  onBlur={() => setIsFocused(false)}
                   placeholder="Ask anything about your documents..."
                   className="min-h-[44px] max-h-32 resize-none border-0 focus-visible:ring-0 bg-transparent py-3 px-3 w-full outline-none text-sm"
                   minRows={1}
@@ -1028,18 +1025,9 @@ function ChatContent() {
               </Button>
             )}
           </div>
-          <AnimatePresence>
-            {isFocused && (
-              <motion.div
-                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                animate={{ opacity: 1, height: "auto", marginTop: -4 }}
-                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                className="px-4 pb-2 text-[10.5px] text-muted-foreground/70 overflow-hidden"
-              >
-                Tip: Type @ to search within a specific document.
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <div className="px-4 pb-2 text-[10.5px] text-muted-foreground/70 -mt-1 select-none">
+            Tip: Type @ to search within a specific document.
+          </div>
         </motion.div>
       </div>
     </div>
