@@ -251,9 +251,13 @@ def create_app() -> FastAPI:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
+    frontend_urls = [url.strip() for url in get_settings().FRONTEND_URL.split(",")]
+    if "http://localhost:3000" not in frontend_urls:
+        frontend_urls.append("http://localhost:3000")
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[get_settings().FRONTEND_URL],
+        allow_origins=frontend_urls,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
