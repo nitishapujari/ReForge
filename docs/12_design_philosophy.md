@@ -12,4 +12,4 @@ A standard Retrieval-Augmented Generation (RAG) pipeline is brittle: if the init
 
 ## Modularity
 
-To ensure long-term maintainability, ReForge enforces strict boundaries between its functional domains. The presentation layer, the API gateway, the orchestration graph, the LLM provider, and the storage mechanisms are all loosely coupled. This design philosophy guarantees that the system is not permanently tethered to any single vendor or technology. The vector database can be swapped, the LLM provider can be replaced, and the frontend can be rewritten without requiring fundamental changes to the core orchestration logic.
+To ensure long-term maintainability, ReForge enforces strict boundaries between its functional domains. The presentation layer, the API gateway, the orchestration graph, the LLM provider, and the storage mechanisms are all loosely coupled. This design philosophy ensures that the system is not permanently tethered to any single vendor or technology. The vector database can be swapped, the LLM provider can be replaced, and the frontend can be rewritten without requiring fundamental changes to the core orchestration logic.

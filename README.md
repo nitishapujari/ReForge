@@ -120,20 +120,34 @@ ReForge/
 
 ## 🚀 Getting Started
 
-### 1. Prerequisites
-- Node.js (v18+)
-- Python (v3.10+)
-- Google Gemini API Key
+ReForge can be run using Docker (Recommended) or via a manual local setup.
 
-### 2. Environment Setup
+### 1. Environment Setup (Required for both)
 Copy the example environment files in both directories:
 ```bash
 cp frontend/.env.example frontend/.env.local
 cp backend/.env.example backend/.env
 ```
-Fill in the required variables (JWT secrets, API keys, etc.).
+Fill in the required variables (JWT secrets, API keys, etc.) in both files.
 
-### 3. Running the Backend (FastAPI)
+### 2. Run with Docker (Recommended)
+The repository includes a comprehensive `docker-compose.yml` that orchestrates the Next.js frontend, FastAPI backend, PostgreSQL database, and ChromaDB vector store.
+
+**Prerequisites:** Docker and Docker Compose installed.
+
+```bash
+docker-compose up --build
+```
+Once the containers are running, navigate to `http://localhost:3000`.
+
+### 3. Alternative: Manual Local Setup
+
+If you prefer to run the services outside of Docker, ensure you have Node.js (v18+) and Python (v3.10+) installed, along with local or cloud instances of PostgreSQL and ChromaDB.
+
+<details>
+<summary><strong>View Manual Setup Instructions</strong></summary>
+
+**Running the Backend (FastAPI)**
 ```bash
 cd backend
 python -m venv venv
@@ -142,13 +156,27 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 4. Running the Frontend (Next.js)
+**Running the Frontend (Next.js)**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 Navigate to `http://localhost:3000`.
+
+</details>
+
+---
+
+## ☁️ Deployment
+
+ReForge is designed to be easily deployed to modern cloud platforms or self-hosted via Docker. We officially support:
+
+- **Frontend:** Vercel (Next.js Edge network)
+- **Backend:** Render (Web Service with persistent disk volume)
+- **Self-Hosted:** Docker & Docker Compose (Production-ready containers)
+
+👉 **Dive deeper:** [Read the Deployment Guide](./docs/13_deployment.md)
 
 ---
 
@@ -161,7 +189,7 @@ We maintain rigorous documentation detailing every aspect of the project's desig
 | **Overview** | [01. Project Overview](./docs/01_project_overview.md) <br> [02. Features](./docs/02_features.md) <br> [12. Design Philosophy](./docs/12_design_philosophy.md) |
 | **Architecture** | [03. Technology Stack](./docs/03_tech_stack.md) <br> [04. Architecture](./docs/04_architecture.md) <br> [05. Folder Structure](./docs/05_folder_structure.md) <br> [06. System Design](./docs/06_system_design.md) |
 | **Engineering** | [07. API Overview](./docs/07_api_overview.md) <br> [08. Engineering Decisions](./docs/08_engineering_decisions.md) <br> [09. Challenges & Solutions](./docs/09_challenges_and_solutions.md) |
-| **Lifecycle** | [10. Future Improvements](./docs/10_future_improvements.md) <br> [11. Testing & Validation](./docs/11_testing_and_validation.md) |
+| **Lifecycle** | [10. Future Improvements](./docs/10_future_improvements.md) <br> [11. Testing & Validation](./docs/11_testing_and_validation.md) <br> [13. Deployment Guide](./docs/13_deployment.md) |
 
 ---
 
