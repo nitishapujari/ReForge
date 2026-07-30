@@ -92,7 +92,7 @@ def _parse_pdf_ocr(file_content: bytes) -> list[dict[str, str | int]]:
         gc.collect()
         return pages
     except Exception as e:
-        logger.warning(f"OCR parsing failed: {e}")
+        logger.exception("[OCR Parser Exception] OCR parsing failed.")
         return []
 
 
@@ -108,7 +108,7 @@ def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
         try:
             pages = parser_func(file_content)
         except Exception as e:
-            logger.warning("%s encountered an error: %s", name, e)
+            logger.exception("[%s Parser Exception] Encountered an error while parsing.", name)
             pages = []
             
         if pages:

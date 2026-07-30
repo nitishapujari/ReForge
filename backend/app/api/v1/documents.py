@@ -109,7 +109,7 @@ async def run_ingestion_task(
                 
         except Exception as e:
             total_fail_time = time.perf_counter() - task_start
-            logger.error("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.\nException: %r\nTraceback:\n%s", document_id, filename, total_fail_time, e, traceback.format_exc())
+            logger.exception("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.", document_id, filename, total_fail_time)
             try:
                 factory = get_session_factory()
                 async with factory() as db:
@@ -120,7 +120,7 @@ async def run_ingestion_task(
                         await db.commit()
                         logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> failed | Error: %s", document_id, doc.error_message)
             except Exception as db_err:
-                logger.error("[Database Fatal] Failed to update status to failed for %s.\nException: %r\nTraceback:\n%s", document_id, db_err, traceback.format_exc())
+                logger.exception("[Database Fatal] Failed to update status to failed for %s.", document_id)
 
     task = asyncio.create_task(_execute())
     _fire_and_forget(task)

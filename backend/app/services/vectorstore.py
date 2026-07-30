@@ -168,7 +168,9 @@ async def add_documents_async(
                     metadatas=batch_metas,
                 )
             except Exception as e:
-                logger.error("[Embedding & ChromaDB Error] Failed to generate embeddings or insert batch %d-%d: %s", i + 1, min(i + batch_size, total), e, exc_info=True)
+                doc_id = batch_metas[0].get("document_id", "unknown") if batch_metas else "unknown"
+                filename = batch_metas[0].get("filename", "unknown") if batch_metas else "unknown"
+                logger.exception("[Embedding & ChromaDB Error] Document ID: %s | Filename: '%s' | Failed to generate embeddings or insert batch %d-%d.", doc_id, filename, i + 1, min(i + batch_size, total))
                 raise
 
             inserted_count += len(batch_ids)
@@ -184,7 +186,9 @@ async def add_documents_async(
         logger.info("[Embedding & ChromaDB Success] Verified %d vectors inserted into ChromaDB in %.2f seconds (%.2f chunks/sec)", inserted_count, total_time, inserted_count / total_time if total_time > 0 else 0)
     except Exception as e:
         total_time = time.perf_counter() - start_time
-        logger.error("[Embedding & ChromaDB Fatal] Ingestion failed after %.2fs with %d/%d chunks inserted: %s", total_time, inserted_count, total, e, exc_info=True)
+        doc_id = metadatas[0].get("document_id", "unknown") if metadatas else "unknown"
+        filename = metadatas[0].get("filename", "unknown") if metadatas else "unknown"
+        logger.exception("[Embedding & ChromaDB Fatal] Document ID: %s | Filename: '%s' | Ingestion failed after %.2fs with %d/%d chunks inserted.", doc_id, filename, total_time, inserted_count, total)
         raise
 
 
