@@ -263,6 +263,37 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def upload_cors_middleware(request: Request, call_next):
+        """
+        Bypass strict CORSMiddleware specifically for the upload endpoint.
+        CORSMiddleware returns 400 Bad Request if the Origin doesn't perfectly match frontend_urls.
+        Since the upload endpoint receives direct multipart forms from potentially unlisted domains
+        (like dynamically generated Vercel preview URLs or 127.0.0.1 testing), we dynamically
+        allow the origin specifically for this endpoint to prevent the preflight from failing.
+        """
+        if request.url.path.endswith("/api/v1/documents/upload"):
+            origin = request.headers.get("origin")
+            
+            # Handle OPTIONS preflight
+            if request.method == "OPTIONS":
+                response = Response("OK", status_code=200)
+                if origin:
+                    response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+                response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                return response
+                
+            # Handle actual POST request
+            response = await call_next(request)
+            if origin:
+                response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            return response
+            
+        return await call_next(request)
+
     app.include_router(v1_router)
 
     return app
