@@ -61,63 +61,55 @@ async def run_ingestion_task(
         task_start = time.perf_counter()
         logger.info("[Ingestion Task Started] Document ID: %s | Filename: '%s' | User ID: %s | Initial DB Status transition: processing", document_id, filename, user_id)
         try:
-            # Step 1: Delete existing vector chunks if replacing (no DB session held)
-            if is_replace:
-                step1_start = time.perf_counter()
-                deleted_count = await asyncio.to_thread(
-                    vectorstore.delete_by_document_id,
-                    document_id
-                )
-                logger.info("[Step 1 Success] Deleted %d existing vectors for replace in %.2fs", deleted_count, time.perf_counter() - step1_start)
-
-            # Step 2: Stream parsing, chunking, and embedding
-            step2_start = time.perf_counter()
-
-            def on_batch_ready(chunk_ids, chunk_texts, chunk_metadatas):
-                logger.info("Starting embedding")
-                vectorstore.add_documents(
-                    ids=chunk_ids,
-                    documents=chunk_texts,
-                    metadatas=chunk_metadatas,
-                    batch_size=64,
-                )
-                logger.info("Embedding complete")
-
-            def on_reset():
-                logger.info("Parser failed halfway, resetting chunks for document %s", document_id)
-                vectorstore.delete_by_document_id(document_id)
-
-            total_chunks = await asyncio.to_thread(
+            # Step 1: Process document and extract chunks (CPU bound, no DB session held)
+            step1_start = time.perf_counter()
+            _, chunk_ids, chunk_texts, chunk_metadatas = await asyncio.to_thread(
                 document_processor.process_document,
                 document_id=document_id,
                 user_id=user_id,
                 filename=filename,
                 file_content=file_content,
-                on_batch_ready=on_batch_ready,
-                on_reset=on_reset,
                 file_hash=file_hash,
             )
+            logger.info("[Step 1 Success] Parsing & Chunking completed in %.2fs | Chunks generated: %d", time.perf_counter() - step1_start, len(chunk_ids))
             
-            # Free file_content from RAM
+            # Free file_content from RAM before vector embedding
             file_content = None
             gc.collect()
-            logger.info("[Step 2 Success] Streamed ingestion finished in %.2fs | Total Chunks: %d", time.perf_counter() - step2_start, total_chunks)
             
-            # Step 3: ONLY NOW open a short-lived database session to update status
+            # Step 2: Delete existing vector chunks if replacing (no DB session held)
+            if is_replace:
+                step2_start = time.perf_counter()
+                deleted_count = await asyncio.to_thread(
+                    vectorstore.delete_by_document_id,
+                    document_id
+                )
+                logger.info("[Step 2 Success] Deleted %d existing vectors for replace in %.2fs", deleted_count, time.perf_counter() - step2_start)
+                
+            # Step 3: Add vector embeddings asynchronously in batches (no DB session held)
+            step3_start = time.perf_counter()
+            await vectorstore.add_documents_async(
+                ids=chunk_ids,
+                documents=chunk_texts,
+                metadatas=chunk_metadatas,
+                batch_size=64,
+            )
+            logger.info("[Step 3 Success] Vector embeddings and ChromaDB insertion finished in %.2fs", time.perf_counter() - step3_start)
+            
+            # Step 4: ONLY NOW open a short-lived database session to update status
             factory = get_session_factory()
             async with factory() as db:
                 doc = await db.get(Document, document_id)
                 if doc:
                     doc.status = "completed"
-                    doc.chunk_count = total_chunks
+                    doc.chunk_count = len(chunk_ids)
                     doc.error_message = None
                     await db.commit()
-                    logger.info("Document marked successful")
-                    logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> completed | Chunk Count: %d | Total Ingestion Time: %.2fs", document_id, total_chunks, time.perf_counter() - task_start)
+                    logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> completed | Chunk Count: %d | Total Ingestion Time: %.2fs", document_id, len(chunk_ids), time.perf_counter() - task_start)
                 
         except Exception as e:
             total_fail_time = time.perf_counter() - task_start
-            logger.exception("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.", document_id, filename, total_fail_time)
+            logger.error("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.\nException: %r\nTraceback:\n%s", document_id, filename, total_fail_time, e, traceback.format_exc())
             try:
                 factory = get_session_factory()
                 async with factory() as db:
@@ -126,10 +118,9 @@ async def run_ingestion_task(
                         doc.status = "failed"
                         doc.error_message = f"{type(e).__name__}: {str(e)}"
                         await db.commit()
-                        logger.info("Document marked failed")
                         logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> failed | Error: %s", document_id, doc.error_message)
             except Exception as db_err:
-                logger.exception("[Database Fatal] Failed to update status to failed for %s.", document_id)
+                logger.error("[Database Fatal] Failed to update status to failed for %s.\nException: %r\nTraceback:\n%s", document_id, db_err, traceback.format_exc())
 
     task = asyncio.create_task(_execute())
     _fire_and_forget(task)
