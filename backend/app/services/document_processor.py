@@ -53,12 +53,17 @@ def validate_file(filename: str, file_size: int) -> None:
 
 
 def _parse_pdf_pypdf(file_content: bytes) -> list[dict[str, str | int]]:
+    logger.info("Initializing PdfReader...")
     reader = PdfReader(io.BytesIO(file_content))
     pages = []
+    logger.info("Total pages to parse: %d", len(reader.pages))
     for i, page in enumerate(reader.pages, start=1):
+        logger.info("Extracting text for page %d...", i)
         text = page.extract_text()
+        logger.info("Finished extracting text for page %d.", i)
         if text and text.strip():
             pages.append({"text": text.strip(), "page_number": i})
+    logger.info("PdfReader extraction complete.")
     return pages
 
 
@@ -248,6 +253,7 @@ def process_document(
     chunk_metadatas: list[dict] = []
     chunk_counter = 0
 
+    logger.info("Starting chunking phase for %d pages...", len(pages))
     for page_data in pages:
         page_text = page_data["text"]
         page_number = page_data["page_number"]
