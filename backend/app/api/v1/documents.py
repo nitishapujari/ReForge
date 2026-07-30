@@ -79,7 +79,7 @@ async def run_ingestion_task(
                     ids=chunk_ids,
                     documents=chunk_texts,
                     metadatas=chunk_metadatas,
-                    batch_size=8,
+                    batch_size=64,
                 )
                 logger.info("Embedding complete")
 
