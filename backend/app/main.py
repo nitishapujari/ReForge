@@ -281,7 +281,13 @@ def create_app() -> FastAPI:
                 if origin:
                     response.headers["Access-Control-Allow-Origin"] = origin
                 response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-                response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+                
+                req_headers = request.headers.get("access-control-request-headers")
+                if req_headers:
+                    response.headers["Access-Control-Allow-Headers"] = req_headers
+                else:
+                    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+                    
                 response.headers["Access-Control-Allow-Credentials"] = "true"
                 return response
                 
