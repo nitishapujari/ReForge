@@ -29,7 +29,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 
 import uuid
-from fastapi import Request
+from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 
 
