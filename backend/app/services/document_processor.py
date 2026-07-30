@@ -52,79 +52,38 @@ def validate_file(filename: str, file_size: int) -> None:
         )
 
 
-def _parse_pdf_pypdf(file_content: bytes) -> list[dict[str, str | int]]:
+def _parse_pdf_pypdf_gen(file_content: bytes):
     logger.info("Initializing PdfReader...")
     reader = PdfReader(io.BytesIO(file_content))
-    pages = []
-    logger.info("Total pages to parse: %d", len(reader.pages))
-    for i, page in enumerate(reader.pages, start=1):
-        logger.info("Extracting text for page %d...", i)
-        text = page.extract_text()
-        logger.info("Finished extracting text for page %d.", i)
+    total_pages = len(reader.pages)
+    logger.info("Total pages to parse: %d", total_pages)
+    for i in range(total_pages):
+        logger.info("Extracting text for page %d...", i + 1)
+        text = reader.pages[i].extract_text()
+        logger.info("Finished extracting text for page %d.", i + 1)
         if text and text.strip():
-            pages.append({"text": text.strip(), "page_number": i})
+            yield {"text": text.strip(), "page_number": i + 1}
     logger.info("PdfReader extraction complete.")
-    return pages
 
-
-def _parse_pdf_pymupdf(file_content: bytes) -> list[dict[str, str | int]]:
+def _parse_pdf_pymupdf_gen(file_content: bytes):
     doc = fitz.open(stream=file_content, filetype="pdf")
-    pages = []
     for i, page in enumerate(doc, start=1):
         text = page.get_text()
         if text and text.strip():
-            pages.append({"text": text.strip(), "page_number": i})
+            yield {"text": text.strip(), "page_number": i}
     doc.close()
-    return pages
 
-
-def _parse_pdf_ocr(file_content: bytes) -> list[dict[str, str | int]]:
-    """Fallback OCR parser for scanned PDFs using pdf2image and pytesseract."""
-    try:
-        images = convert_from_bytes(file_content, fmt='jpeg')
-        pages = []
-        for i, img in enumerate(images, start=1):
-            text = pytesseract.image_to_string(img)
+def _parse_pdf_ocr_gen(file_content: bytes):
+    reader = PdfReader(io.BytesIO(file_content))
+    total_pages = len(reader.pages)
+    for i in range(1, total_pages + 1):
+        images = convert_from_bytes(file_content, fmt='jpeg', first_page=i, last_page=i)
+        if images:
+            text = pytesseract.image_to_string(images[0])
             if text and text.strip():
-                pages.append({"text": text.strip(), "page_number": i})
-            img.close()
-        del images
+                yield {"text": text.strip(), "page_number": i}
+            images[0].close()
         gc.collect()
-        return pages
-    except Exception as e:
-        logger.exception("[OCR Parser Exception] OCR parsing failed.")
-        return []
-
-
-def extract_text_from_pdf(file_content: bytes) -> list[dict[str, str | int]]:
-    parsers = [
-        ("pypdf", _parse_pdf_pypdf),
-        ("PyMuPDF", _parse_pdf_pymupdf),
-        ("OCR", _parse_pdf_ocr),
-    ]
-
-    for i, (name, parser_func) in enumerate(parsers):
-        logger.info("Using parser: %s", name)
-        try:
-            pages = parser_func(file_content)
-        except Exception as e:
-            logger.exception("[%s Parser Exception] Encountered an error while parsing.", name)
-            pages = []
-            
-        if pages:
-            total_chars = sum(len(str(p.get("text", ""))) for p in pages)
-            logger.info("[Parser Success] Selected parser: '%s' | Pages extracted: %d | Total text length: %d chars", name, len(pages), total_chars)
-            return pages
-            
-        logger.info("%s extracted 0 pages", name)
-        
-        if i < len(parsers) - 1:
-            logger.info("Falling back to next parser")
-
-    raise DocumentProcessingError(
-        "Could not extract any text from the PDF. "
-        "The file may be corrupted or unreadable."
-    )
 
 
 def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
@@ -227,70 +186,89 @@ def process_document(
     user_id: str,
     filename: str,
     file_content: bytes,
+    on_batch_ready,
+    on_reset,
     file_hash: str | None = None,
-) -> tuple[str, list[str], list[str], list[dict]]:
+) -> int:
     validate_file(filename, len(file_content))
     created_at = datetime.now(timezone.utc).isoformat()
     ext = Path(filename).suffix.lower()
 
-    if ext == ".pdf":
-        pages = extract_text_from_pdf(file_content)
-    elif ext == ".txt":
-        pages = extract_text_from_txt(file_content)
-    elif ext == ".docx":
-        pages = extract_text_from_docx(file_content)
-    elif ext == ".csv":
-        pages = extract_text_from_csv(file_content)
-    elif ext == ".md":
-        pages = extract_text_from_md(file_content)
-    elif ext in [".png", ".jpg"]:
-        pages = extract_text_from_image(file_content)
-    else:
-        raise DocumentProcessingError(f"Unsupported file type: {ext}")
+    def process_pages(pages_gen):
+        chunk_ids, chunk_texts, chunk_metadatas = [], [], []
+        chunk_counter = 0
 
-    chunk_ids: list[str] = []
-    chunk_texts: list[str] = []
-    chunk_metadatas: list[dict] = []
-    chunk_counter = 0
+        logger.info("Starting chunking")
+        for page_data in pages_gen:
+            page_text = page_data["text"]
+            page_number = page_data["page_number"]
 
-    logger.info("Starting chunking phase for %d pages...", len(pages))
-    for page_data in pages:
-        page_text = page_data["text"]
-        page_number = page_data["page_number"]
-
-        # Use our new semantic chunker instead of RecursiveCharacterTextSplitter
-        chunks = _semantic_chunk_text(page_text)
-
-        for chunk_text in chunks:
-            chunk_counter += 1
-            chunk_id = f"{document_id}_chunk_{chunk_counter}"
-
-            chunk_ids.append(chunk_id)
-            chunk_texts.append(chunk_text)
-            
-            meta = {
-                "document_id": document_id,
-                "user_id": user_id,
-                "filename": filename,
-                "page_number": page_number,
-                "chunk_number": chunk_counter,
-                "created_at": created_at,
-            }
-            if file_hash:
-                meta["file_hash"] = file_hash
+            chunks = _semantic_chunk_text(page_text)
+            for chunk_text in chunks:
+                chunk_counter += 1
+                chunk_ids.append(f"{document_id}_chunk_{chunk_counter}")
+                chunk_texts.append(chunk_text)
                 
-            chunk_metadatas.append(meta)
+                meta = {
+                    "document_id": document_id,
+                    "user_id": user_id,
+                    "filename": filename,
+                    "page_number": page_number,
+                    "chunk_number": chunk_counter,
+                    "created_at": created_at,
+                }
+                if file_hash:
+                    meta["file_hash"] = file_hash
+                chunk_metadatas.append(meta)
 
-    total_text_len = sum(len(str(p.get("text", ""))) for p in pages)
-    avg_chunk_size = int(sum(len(c) for c in chunk_texts) / len(chunk_texts)) if chunk_texts else 0
-    logger.info(
-        "[Chunking Completed] Filename: '%s' | Document ID: %s | Pages: %d | Extracted Text Length: %d chars | Total Chunks: %d | Average Chunk Size: %d chars",
-        filename,
-        document_id,
-        len(pages),
-        total_text_len,
-        chunk_counter,
-        avg_chunk_size,
-    )
-    gc.collect()
-    return document_id, chunk_ids, chunk_texts, chunk_metadatas
+                if len(chunk_ids) >= 64:
+                    on_batch_ready(chunk_ids, chunk_texts, chunk_metadatas)
+                    chunk_ids, chunk_texts, chunk_metadatas = [], [], []
+
+        if chunk_ids:
+            on_batch_ready(chunk_ids, chunk_texts, chunk_metadatas)
+            
+        logger.info("Chunk generation complete | Total Chunks: %d", chunk_counter)
+        return chunk_counter
+
+
+    if ext == ".pdf":
+        parsers = [
+            ("pypdf", _parse_pdf_pypdf_gen),
+            ("PyMuPDF", _parse_pdf_pymupdf_gen),
+            ("OCR", _parse_pdf_ocr_gen),
+        ]
+
+        for i, (name, parser_func) in enumerate(parsers):
+            logger.info("Using parser: %s", name)
+            try:
+                pages_gen = parser_func(file_content)
+                total_chunks = process_pages(pages_gen)
+                logger.info("[Parser Success] Selected parser: '%s'", name)
+                gc.collect()
+                return total_chunks
+            except Exception as e:
+                logger.exception("[%s Parser Exception] Encountered an error.", name)
+                if i < len(parsers) - 1:
+                    logger.info("Falling back to next parser")
+                    on_reset()
+                else:
+                    raise DocumentProcessingError("All parsers failed.")
+
+    else:
+        if ext == ".txt":
+            pages = extract_text_from_txt(file_content)
+        elif ext == ".docx":
+            pages = extract_text_from_docx(file_content)
+        elif ext == ".csv":
+            pages = extract_text_from_csv(file_content)
+        elif ext == ".md":
+            pages = extract_text_from_md(file_content)
+        elif ext in [".png", ".jpg"]:
+            pages = extract_text_from_image(file_content)
+        else:
+            raise DocumentProcessingError(f"Unsupported file type: {ext}")
+            
+        total_chunks = process_pages(pages)
+        gc.collect()
+        return total_chunks
