@@ -22,50 +22,6 @@ _collection: chromadb.Collection | None = None
 _embedding_fn: chromadb.EmbeddingFunction | None = None
 
 
-from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
-
-class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
-    """
-    ChromaDB EmbeddingFunction implementation using the google-genai SDK.
-    Offloads embedding generation to Google Gemini API (e.g., gemini-embedding-001),
-    preventing local memory spikes and vCPU starvation on constrained cloud instances.
-    """
-    def __init__(self, api_key: str, model_name: str = "gemini-embedding-001") -> None:
-        from google import genai
-        self.client = genai.Client(api_key=api_key)
-        self.model_name = model_name
-
-    @retry(
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        stop=stop_after_attempt(5),
-        reraise=True
-    )
-    def _embed_with_retry(self, input_data: str | list[str]):
-        return self.client.models.embed_content(
-            model=self.model_name,
-            contents=input_data,
-        )
-
-    def __call__(self, input: list[str]) -> list[list[float]]:
-        try:
-            # Try embedding the batch of strings in a single API call
-            response = self._embed_with_retry(input)
-            if response.embeddings and len(response.embeddings) == len(input):
-                return [e.values for e in response.embeddings if e.values is not None]
-        except Exception as e:
-            logger.debug("Batch embedding failed (%s), falling back to sequential embedding.", e)
-            
-        # Sequential fallback for individual chunks
-        embeddings: list[list[float]] = []
-        for text in input:
-            res = self._embed_with_retry(text)
-            if res.embeddings and len(res.embeddings) > 0 and res.embeddings[0].values:
-                embeddings.append(res.embeddings[0].values)
-            else:
-                raise RuntimeError("Received empty embedding from Gemini API.")
-        return embeddings
-
-
 def init_vectorstore(collection_name: str) -> None:
     """
     Initialize the ChromaDB HTTP client and collection.
@@ -78,24 +34,15 @@ def init_vectorstore(collection_name: str) -> None:
     from app.config import get_settings
     settings = get_settings()
 
-    if settings.EMBEDDING_PROVIDER.lower() == "gemini":
-        if not settings.GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY is required when EMBEDDING_PROVIDER=gemini")
-        _embedding_fn = GeminiEmbeddingFunction(
-            api_key=settings.GEMINI_API_KEY,
-            model_name=settings.GEMINI_EMBEDDING_MODEL,
-        )
-        logger.info("ChromaDB embedding provider configured: GEMINI (model='%s')", settings.GEMINI_EMBEDDING_MODEL)
-    else:
-        _embedding_fn = DefaultEmbeddingFunction()
-        try:
-            # Warm up embedding model at startup so ONNX weights are loaded before handling uploads
-            logger.info("Warming up ONNX embedding model...")
-            _embedding_fn(["warmup"])
-            logger.info("ONNX embedding model warmed up successfully.")
-        except Exception as e:
-            logger.warning("Failed to warm up embedding function at startup: %s", e)
-        logger.info("ChromaDB embedding provider configured: ONNX (all-MiniLM-L6-v2)")
+    _embedding_fn = DefaultEmbeddingFunction()
+    try:
+        # Warm up embedding model at startup so ONNX weights are loaded before handling uploads
+        logger.info("Warming up ONNX embedding model...")
+        _embedding_fn(["warmup"])
+        logger.info("ONNX embedding model warmed up successfully.")
+    except Exception as e:
+        logger.warning("Failed to warm up embedding function at startup: %s", e)
+    logger.info("ChromaDB embedding provider configured: ONNX (all-MiniLM-L6-v2)")
 
     if settings.CHROMA_MODE == "persistent":
         _client = chromadb.PersistentClient(
