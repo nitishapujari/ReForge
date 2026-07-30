@@ -22,6 +22,8 @@ _collection: chromadb.Collection | None = None
 _embedding_fn: chromadb.EmbeddingFunction | None = None
 
 
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
+
 class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
     """
     ChromaDB EmbeddingFunction implementation using the google-genai SDK.
@@ -33,13 +35,21 @@ class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
         self.client = genai.Client(api_key=api_key)
         self.model_name = model_name
 
+    @retry(
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(5),
+        reraise=True
+    )
+    def _embed_with_retry(self, input_data: str | list[str]):
+        return self.client.models.embed_content(
+            model=self.model_name,
+            contents=input_data,
+        )
+
     def __call__(self, input: list[str]) -> list[list[float]]:
         try:
             # Try embedding the batch of strings in a single API call
-            response = self.client.models.embed_content(
-                model=self.model_name,
-                contents=input,
-            )
+            response = self._embed_with_retry(input)
             if response.embeddings and len(response.embeddings) == len(input):
                 return [e.values for e in response.embeddings if e.values is not None]
         except Exception as e:
@@ -48,10 +58,7 @@ class GeminiEmbeddingFunction(chromadb.EmbeddingFunction):
         # Sequential fallback for individual chunks
         embeddings: list[list[float]] = []
         for text in input:
-            res = self.client.models.embed_content(
-                model=self.model_name,
-                contents=text,
-            )
+            res = self._embed_with_retry(text)
             if res.embeddings and len(res.embeddings) > 0 and res.embeddings[0].values:
                 embeddings.append(res.embeddings[0].values)
             else:
