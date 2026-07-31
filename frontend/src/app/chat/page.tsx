@@ -108,6 +108,8 @@ function ChatContent() {
 
   useEffect(() => {
     if (sessionParam) {
+      if (sessionId === sessionParam && messages.length > 0) return;
+      
       setSessionId(sessionParam)
       fetch(`/api/v1/history/${sessionParam}`)
         .then(res => res.json())
@@ -140,6 +142,26 @@ function ChatContent() {
         .finally(() => setIsLoadingSuggestions(false))
     }
   }, [sessionParam])
+
+  useEffect(() => {
+    const handleNewChat = () => {
+      setSessionId("")
+      setMessages([])
+      setIsLoadingSuggestions(true)
+      fetch(`/api/v1/chat/initial_suggestions`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.suggestions) {
+            setInitialSuggestions(data.suggestions)
+          }
+        })
+        .catch(err => console.error("Failed to fetch initial suggestions:", err))
+        .finally(() => setIsLoadingSuggestions(false))
+    }
+
+    window.addEventListener("new-chat-clicked", handleNewChat)
+    return () => window.removeEventListener("new-chat-clicked", handleNewChat)
+  }, [])
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)

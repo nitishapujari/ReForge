@@ -131,7 +131,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           ReForge
         </Link>
         <motion.div whileTap={{ scale: 0.96 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-          <Link href="/chat" className="group flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-all duration-300 border rounded-md shadow-sm border-border bg-background hover:bg-primary/5 hover:text-primary hover:border-primary/30 hover:shadow-[0_0_10px_rgba(var(--primary),0.1)] text-foreground">
+          <Link href="/chat" onClick={() => window.dispatchEvent(new Event("new-chat-clicked"))} className="group flex items-center gap-2 w-full px-3 py-2 text-sm font-medium transition-all duration-300 border rounded-md shadow-sm border-border bg-background hover:bg-primary/5 hover:text-primary hover:border-primary/30 hover:shadow-[0_0_10px_rgba(var(--primary),0.1)] text-foreground">
             <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
             New Chat
           </Link>
@@ -147,7 +147,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton 
-                      onClick={() => router.push(item.url)}
+                      onClick={() => {
+                        if (item.url === '/chat') {
+                          window.dispatchEvent(new Event("new-chat-clicked"))
+                        }
+                        router.push(item.url)
+                      }}
                       isActive={isActive}
                       className={`relative overflow-hidden z-0 group transition-all duration-300 hover:bg-muted/50 rounded-md ${isActive ? 'text-primary font-semibold' : 'hover:text-foreground text-muted-foreground'}`}
                     >
