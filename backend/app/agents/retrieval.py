@@ -14,6 +14,7 @@ import re
 
 from app.graph.state import GraphState, TraceEntry
 from app.services import retriever, llm
+from app.services.intent_classifier import classify_retrieval_intent, RetrievalIntent
 from langchain_core.runnables import RunnableConfig
 from app.services.vectorstore import get_collection
 from app.prompts import NO_DOCUMENTS_RESPONSE, CONDENSE_SYSTEM_PROMPT, CONDENSE_USER_PROMPT
@@ -144,8 +145,17 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
             "trace": state.get("trace", []) + [trace_entry],
         }
 
-    # Perform retrieval
-    results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k, document_ids=state.get("document_ids"))
+    # Classify intent and perform retrieval
+    document_ids = state.get("document_ids")
+    intent = classify_retrieval_intent(query)
+    
+    if intent == RetrievalIntent.DOCUMENT_OPERATION and document_ids:
+        logger.info("Intent %s detected, bypassing semantic search for document_ids=%s", intent.name, document_ids)
+        if stream_callback:
+            stream_callback({"type": "status", "message": "📑 Retrieving entire document...", "status": "info"})
+        results = retriever.retrieve_all(user_id=state.get("user_id"), document_ids=document_ids)
+    else:
+        results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k, document_ids=document_ids)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 

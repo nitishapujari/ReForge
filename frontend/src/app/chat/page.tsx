@@ -21,6 +21,7 @@ type Message = {
   id: string
   role: "user" | "assistant"
   content: string
+  attached_documents?: { document_id: string, filename: string }[]
   status?: "generating" | "done" | "error"
   agentStatuses?: { message: string, status: string }[]
   metadata?: {
@@ -198,6 +199,7 @@ function ChatContent() {
       id: crypto.randomUUID(),
       role: "user",
       content: textToSend.trim(),
+      attached_documents: selectedDocs.length > 0 ? [...selectedDocs] : undefined,
     }
 
     const assistantMessageId = crypto.randomUUID()
@@ -695,7 +697,19 @@ function ChatContent() {
                           )}
                         </div>
                       ) : (
-                        <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                        <div className="flex flex-col gap-2">
+                          {message.attached_documents && message.attached_documents.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-1">
+                              {message.attached_documents.map((doc, idx) => (
+                                <div key={idx} className="flex items-center gap-1.5 bg-primary-foreground/10 text-primary-foreground px-2.5 py-1 rounded-md text-xs font-medium border border-primary-foreground/20">
+                                  <FileText className="w-3 h-3" />
+                                  <span className="truncate max-w-[200px]">{doc.filename}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+                        </div>
                       )}
                     </div>
 

@@ -113,3 +113,59 @@ def retrieve(
         "distances": filtered_distances,
         "similarity_scores": similarity_scores,
     }
+
+def retrieve_all(
+    user_id: str,
+    document_ids: list[str],
+) -> dict:
+    """
+    Retrieve all chunks for the specified document(s), preserving chunk order.
+    Bypasses semantic search completely.
+    """
+    collection = get_collection()
+    
+    if not document_ids:
+        return {
+            "documents": [],
+            "metadatas": [],
+            "distances": [],
+            "similarity_scores": [],
+        }
+        
+    doc_filter = {"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}}
+    where_filter: dict = {
+        "$and": [
+            {"user_id": user_id},
+            doc_filter
+        ]
+    }
+    
+    # Use get() instead of query() to bypass semantic search and retrieve all matching records
+    results = collection.get(
+        where=where_filter,
+        include=["documents", "metadatas"]
+    )
+    
+    documents = results.get("documents", [])
+    metadatas = results.get("metadatas", [])
+    
+    # Sort the chunks by chunk_number to preserve the original document chronological order
+    combined = list(zip(documents, metadatas))
+    combined.sort(key=lambda x: x[1].get("chunk_number", 0))
+    
+    sorted_documents = [x[0] for x in combined]
+    sorted_metadatas = [x[1] for x in combined]
+    
+    logger.info(
+        "RetrieveAll complete: retrieved %d chunks for document_ids=%s",
+        len(sorted_documents),
+        document_ids
+    )
+    
+    return {
+        "documents": sorted_documents,
+        "metadatas": sorted_metadatas,
+        "distances": [0.0] * len(sorted_documents),
+        "similarity_scores": [1.0] * len(sorted_documents), # Bypass relevance thresholds downstream
+    }
+
