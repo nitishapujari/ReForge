@@ -38,6 +38,7 @@ dist/
 Thumbs.db
 
 # Runtime storage
+backend/reforge.db
 backend/storage/*.db
 backend/storage/*.db-shm
 backend/storage/*.db-wal

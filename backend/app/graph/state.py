@@ -36,6 +36,7 @@ class GraphState(TypedDict):
     document_ids: list[str] | None
 
     retrieval_query: str | None
+    retrieval_intent: str | None
     rewritten_question: str | None
     retrieved_docs: list[str]
     retrieved_metadatas: list[dict]

@@ -153,6 +153,7 @@ def get_initial_state(question: str, session_id: str, user_id: str, chat_history
         "chat_history": chat_history or [],
         "document_ids": document_ids,
         "retrieval_query": None,
+        "retrieval_intent": None,
         "rewritten_question": None,
         "retrieved_docs": [],
         "retrieved_metadatas": [],

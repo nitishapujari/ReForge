@@ -203,6 +203,7 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
 
     return {
         "retrieval_query": retrieval_query,
+        "retrieval_intent": intent.name,
         "retrieved_docs": docs,
         "retrieved_metadatas": metas,
         "similarity_scores": scores,

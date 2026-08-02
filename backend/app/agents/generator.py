@@ -197,7 +197,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         doc_entry["chunks"].sort(key=lambda x: x["score"], reverse=True)
         
         for c in doc_entry["chunks"]:
-            if total_chunks >= MAX_CONTEXT_CHUNKS:
+            # Bypass limit if this is a document operation (e.g. summarize)
+            is_doc_op = state.get("retrieval_intent") == "DOCUMENT_OPERATION"
+            if not is_doc_op and total_chunks >= MAX_CONTEXT_CHUNKS:
                 break
             
             total_chunks += 1
@@ -220,10 +222,8 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             context_parts.append(
                 f"[Source {source_idx}: {doc_entry['filename']}]\n{c['doc']}"
             )
-
-        if total_chunks >= MAX_CONTEXT_CHUNKS:
+        if not is_doc_op and total_chunks >= MAX_CONTEXT_CHUNKS:
             break
-
     grouped_sources = flat_sources
 
     if not grouped_sources and not web_context_list:
