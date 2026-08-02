@@ -115,6 +115,7 @@ def critique_node(state: GraphState, config: RunnableConfig | None = None) -> di
             prompt=user_prompt,
             response_schema=CriticEvaluation,
             system_instruction=CRITIC_SYSTEM_PROMPT,
+            max_output_tokens=8192,
         )
         
         grounded = evaluation.grounded

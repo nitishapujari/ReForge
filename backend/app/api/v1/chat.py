@@ -211,10 +211,10 @@ async def chat(
     )
 
     logger.info(
-        "Chat complete: session=%s, grounded=%s, confidence=%.4f, sources=%d, attempts=%d",
+        "Chat complete: session=%s, grounded=%s, confidence=%s, sources=%d, attempts=%d",
         session_id,
         grounded,
-        confidence,
+        f"{confidence:.4f}" if confidence is not None else "None",
         len(sources),
         attempts
     )
@@ -454,10 +454,10 @@ async def chat_stream(
                     await db.commit()
 
                     logger.info(
-                        "Chat stream complete: session=%s, grounded=%s, confidence=%.4f",
+                        "Chat stream complete: session=%s, grounded=%s, confidence=%s",
                         session_id,
                         grounded,
-                        confidence
+                        f"{confidence:.4f}" if confidence is not None else "None"
                     )
 
                     # Emit the final SSE
