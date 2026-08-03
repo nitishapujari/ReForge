@@ -30,7 +30,7 @@ class ConversationRouter:
         ]
         self.compiled_fast_patterns = [re.compile(p, re.IGNORECASE) for p in fast_patterns]
 
-    async def classify(self, query: str) -> Intent:
+    async def classify(self, query: str, chat_history_data: list[dict] = None, document_ids: list[str] = None) -> Intent:
         """Classify the incoming query into an Intent using a layered approach."""
         # Stage 1: Fast Path Regex Optimization
         for pattern in self.compiled_fast_patterns:
@@ -39,11 +39,25 @@ class ConversationRouter:
                 return Intent.CONVERSATION
                     
         # Stage 2: Strict Binary Classification via LLM
+        history_str = ""
+        if chat_history_data:
+            history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history_data])
+            
+        doc_context = ""
+        if document_ids and len(document_ids) > 0:
+            doc_context = "The user has explicitly attached documents to this query, indicating they likely want to search them, unless this is purely a greeting.\n"
+
         prompt = (
-            f"You are an intent classifier. The user said: '{query}'.\n"
-            "Classify this as either 'CONVERSATION' (greetings, thanks, farewells, casual chat, small talk, jokes, opinions) "
-            "or 'KNOWLEDGE_QUERY' (asking for facts, information, data, summarization, or questions to be answered).\n"
-            "Return only the exact category name."
+            f"You are an intent classifier.\n\n"
+            f"## Conversation History\n"
+            f"{history_str if history_str else 'No previous conversation.'}\n\n"
+            f"{doc_context}"
+            f"## Current User Message\n"
+            f"'{query}'\n\n"
+            f"Classify the Current User Message as either 'CONVERSATION' or 'KNOWLEDGE_QUERY'.\n"
+            f"- 'CONVERSATION': Greetings, thanks, farewells, casual chat, small talk, jokes, and purely opinion-based questions (e.g. 'What is your opinion on Python?').\n"
+            f"- 'KNOWLEDGE_QUERY': Asking for facts, information, data, summarization, or questions to be answered. Follow-up questions related to previous document-grounded responses MUST remain KNOWLEDGE_QUERY and never bypass retrieval.\n"
+            f"Return only the exact category name."
         )
         
         try:

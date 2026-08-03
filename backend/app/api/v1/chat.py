@@ -98,12 +98,11 @@ async def chat(
         content=request.question,
     )
 
-    intent = await conversation_router.classify(request.question)
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+    intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
     if intent != Intent.KNOWLEDGE_QUERY:
         logger.info("Conversational intent %s detected, bypassing graph", intent.name)
         
-        # Get chat history for context
-        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
         history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history_data])
         prompt = f"## Conversation History\n{history_str}\n\n## User Message\n{request.question}"
         
@@ -117,27 +116,18 @@ async def chat(
             logger.error("Conversational LLM failed: %s", str(e))
             response_text = "I'm having a little trouble connecting right now, but hello!"
             
-        trace_entry = TraceEntrySchema(
-            node="router",
-            execution_time_ms=0.0,
-            input_summary=f"query='{request.question}'",
-            output_summary=f"intent={intent.name}, generated conversational response",
-            attempt=1,
-            decision="bypass"
-        )
-        
         await chat_history.add_message(
             db=db,
             session_id=session_id,
             role="assistant",
             content=response_text,
-            trace_data=[trace_entry.model_dump()],
+            trace_data=[],
             metadata={
                 "sources": [],
                 "response_type": "CONVERSATION",
-                "verification_status": "VERIFIED",
-                "grounded": True,
-                "confidence": 1.0,
+                "verification_status": "NONE",
+                "grounded": None,
+                "confidence": None,
             }
         )
         await db.commit()
@@ -147,13 +137,12 @@ async def chat(
             answer=response_text,
             sources=[],
             response_type="CONVERSATION",
-            grounded=True,
-            confidence=1.0,
+            grounded=None,
+            confidence=None,
             attempts=0
         )
 
     try:
-        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
         initial_state = get_initial_state(
             question=request.question,
             session_id=session_id,
@@ -211,10 +200,10 @@ async def chat(
     )
 
     logger.info(
-        "Chat complete: session=%s, grounded=%s, confidence=%s, sources=%d, attempts=%d",
+        "Chat complete: session=%s, grounded=%s, confidence=%.4f, sources=%d, attempts=%d",
         session_id,
         grounded,
-        f"{confidence:.4f}" if confidence is not None else "None",
+        confidence,
         len(sources),
         attempts
     )
@@ -273,13 +262,12 @@ async def chat_stream(
     
     await db.commit()
 
-    intent = await conversation_router.classify(request.question)
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+    intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
         if intent != Intent.KNOWLEDGE_QUERY:
             logger.info("Conversational intent (stream) %s detected, bypassing graph", intent.name)
-            
-            chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
             
             loop = asyncio.get_running_loop()
             q = asyncio.Queue()
@@ -316,27 +304,18 @@ async def chat_stream(
                         response_text = item.get("result", "")
                         break
             finally:
-                trace_entry = TraceEntrySchema(
-                    node="router",
-                    execution_time_ms=0.0,
-                    input_summary=f"query='{request.question}'",
-                    output_summary=f"intent={intent.name}, generated conversational response",
-                    attempt=1,
-                    decision="bypass"
-                )
-                
                 await chat_history.add_message(
                     db=db,
                     session_id=session_id,
                     role="assistant",
                     content=response_text,
-                    trace_data=[trace_entry.model_dump()],
+                    trace_data=[],
                     metadata={
                         "sources": [],
                         "response_type": "CONVERSATION",
-                        "verification_status": "VERIFIED",
-                        "grounded": True,
-                        "confidence": 1.0,
+                        "verification_status": "NONE",
+                        "grounded": None,
+                        "confidence": None,
                     }
                 )
                 await db.commit()
@@ -345,12 +324,12 @@ async def chat_stream(
                     "type": "done",
                     "session_id": session_id,
                     "response_type": "CONVERSATION",
-                    "verification_status": "VERIFIED",
-                    "grounded": True,
-                    "confidence": 1.0,
+                    "verification_status": "NONE",
+                    "grounded": None,
+                    "confidence": None,
                     "attempts": 0,
                     "sources": [],
-                    "trace_available": True
+                    "trace_available": False
                 }
                 yield f"data: {json.dumps(final_event)}\n\n"
                 await db.close()
@@ -454,10 +433,10 @@ async def chat_stream(
                     await db.commit()
 
                     logger.info(
-                        "Chat stream complete: session=%s, grounded=%s, confidence=%s",
+                        "Chat stream complete: session=%s, grounded=%s, confidence=%.4f",
                         session_id,
                         grounded,
-                        f"{confidence:.4f}" if confidence is not None else "None"
+                        confidence
                     )
 
                     # Emit the final SSE

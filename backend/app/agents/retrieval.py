@@ -23,34 +23,28 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+ELLIPTICAL_PATTERNS = [
+    r"^(why|how|what|where|when|who)\s*\??$",
+    r"^(and\s+then|but\s+why|tell\s+me\s+more)\s*\??$"
+]
+
 def is_ambiguous(question: str) -> bool:
-    """Check if a question needs contextual condensation."""
+    """Check if a question strictly requires previous conversational context to be understood."""
     q_lower = question.lower().strip()
-    words = q_lower.split()
     
-    # 1. Check for pronouns that imply prior context
-    pronouns = {"it", "its", "this", "that", "these", "those", "they", "them", "he", "she", "his", "her", "theirs"}
-    for word in words:
-        clean_word = re.sub(r'[^\w\s]', '', word)
-        if clean_word in pronouns:
+    # 1. Elliptical Queries (standalone question words or short incomplete fragments)
+    for pattern in ELLIPTICAL_PATTERNS:
+        if re.match(pattern, q_lower):
             return True
             
-    # 2. Check for explicit follow-up phrases
-    follow_up_phrases = [
-        "what about",
-        "how about",
-        "and ",
-        "also ",
-        "tell me more",
-        "can you explain more",
-        "why is that"
-    ]
-    for phrase in follow_up_phrases:
-        if q_lower.startswith(phrase):
-            return True
-            
-    # 3. Very short query without a clear subject (e.g., "why?", "how?")
-    if len(words) <= 2:
+    # 2. Explicit Anaphora (Pronouns & Demonstratives)
+    anaphora_pattern = r"\b(it|its|this|that|these|those|they|them|he|she|his|her|theirs)\b"
+    if re.search(anaphora_pattern, q_lower):
+        return True
+        
+    # 3. Explicit Conversational References
+    ref_pattern = r"\b(previous|previously|former|latter|earlier|aforementioned|above|below|before|last\s+answer|last\s+response)\b"
+    if re.search(ref_pattern, q_lower):
         return True
         
     return False
@@ -89,8 +83,9 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
             original_question = state["question"]
             
             if chat_history and is_ambiguous(original_question):
-                # Condense the question using history
-                history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
+                # Condense the question using history (limited to last 4 messages for immediate context)
+                recent_history = chat_history[-4:]
+                history_str = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in recent_history])
                 user_prompt = CONDENSE_USER_PROMPT.format(history=history_str, question=original_question)
                 
                 condensed = llm.invoke(
@@ -147,13 +142,17 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
 
     # Classify intent and perform retrieval
     document_ids = state.get("document_ids")
-    intent = classify_retrieval_intent(query)
+    intent = classify_retrieval_intent(query, document_ids)
     
-    if intent == RetrievalIntent.DOCUMENT_OPERATION and document_ids:
-        logger.info("Intent %s detected, bypassing semantic search for document_ids=%s", intent.name, document_ids)
-        if stream_callback:
-            stream_callback({"type": "status", "message": "📑 Retrieving entire document...", "status": "info"})
-        results = retriever.retrieve_all(user_id=state.get("user_id"), document_ids=document_ids)
+    if intent == RetrievalIntent.DOCUMENT_OPERATION:
+        if not document_ids:
+            logger.info("DOCUMENT_OPERATION requested but no document_ids provided. Returning empty retrieval.")
+            results = {"documents": [], "metadatas": [], "similarity_scores": []}
+        else:
+            logger.info("Intent %s detected, bypassing semantic search for document_ids=%s", intent.name, document_ids)
+            if stream_callback:
+                stream_callback({"type": "status", "message": "📑 Retrieving entire document...", "status": "info"})
+            results = retriever.retrieve_all(user_id=state.get("user_id"), document_ids=document_ids)
     else:
         results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k, document_ids=document_ids)
 
