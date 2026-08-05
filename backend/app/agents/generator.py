@@ -270,6 +270,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
             )
 
         return {
+            "assembled_context": "",
             "answer": answer,
             "sources": [],
             "trace": state.get("trace", []) + [trace_entry],
@@ -359,6 +360,7 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     )
 
     return {
+        "assembled_context": context,
         "answer": answer,
         "sources": sources,
         "trace": state.get("trace", []) + [trace_entry],

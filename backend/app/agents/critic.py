@@ -88,15 +88,8 @@ def critique_node(state: GraphState, config: RunnableConfig | None = None) -> di
             "trace": state.get("trace", []) + [trace_entry],
         }
 
-    # Build context string
-    context_parts = []
-    for i, (doc, meta) in enumerate(zip(docs, metas), start=1):
-        source_label = meta.get("filename", "unknown")
-        page = meta.get("page_number", "?")
-        context_parts.append(
-            f"[Source {i}: {source_label}, Page {page}]\n{doc}"
-        )
-    context = "\n\n---\n\n".join(context_parts)
+    # Read compiled context from state
+    context = state.get("assembled_context", "")
     
     web_context_list = state.get("web_context", [])
     if web_context_list:

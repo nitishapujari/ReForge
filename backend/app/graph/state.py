@@ -45,6 +45,7 @@ class GraphState(TypedDict):
     web_context: list[str] | None
     web_sources: list[dict] | None
 
+    assembled_context: str | None
     answer: str | None
 
     grounded: bool | None
