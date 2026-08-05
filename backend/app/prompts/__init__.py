@@ -45,7 +45,7 @@ GENERATOR_USER_PROMPT = """## Conversation History
 Answer the Current Question naturally and cleanly. 
 First, try to answer based ONLY on the Context Documents and Web Search Context. 
 If the Context Documents or Web Search Context contain relevant information, provide a well-structured, neat, and highly maintained answer using markdown (bullet points, bolding).
-If the Context Documents DO NOT contain relevant information for the question, you MUST start your response exactly with this phrase: "No results found in uploaded docs but here are a few things I know: " and then provide a brief, helpful answer based on your general knowledge.
+If the Context Documents DO NOT contain relevant information for the question, you MUST start your response exactly with this phrase: "I couldn't find any information about this in your uploaded documents, but based on my general knowledge: " and then provide a brief, helpful answer based on your general knowledge.
 CRITICAL: When providing general knowledge, you MUST be 100% certain of the facts. Do NOT hallucinate, invent, or guess information. If you do not know the answer with absolute certainty, instead reply exactly with: "No results found in uploaded docs and I do not have confident general knowledge about this."
 """
 
