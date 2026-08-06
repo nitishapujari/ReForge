@@ -305,9 +305,15 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         # Emit a clear event at the start of generation to handle retries
         stream_callback({"type": "clear"})
         chunks = []
+        
+        def handle_retry():
+            chunks.clear()
+            stream_callback({"type": "clear"})
+            
         for chunk in llm.invoke_stream(
             prompt=user_prompt,
             system_instruction=GENERATOR_SYSTEM_PROMPT,
+            on_retry=handle_retry,
         ):
             chunks.append(chunk)
             stream_callback({"type": "token", "content": chunk})

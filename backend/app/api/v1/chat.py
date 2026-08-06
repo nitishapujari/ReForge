@@ -285,7 +285,17 @@ async def chat_stream(
                     prompt = f"## Conversation History\n{history_str}\n\n## User Message\n{request.question}"
                     
                     response_text = ""
-                    for chunk in invoke_stream(prompt=prompt, system_instruction=CONVERSATION_SYSTEM_PROMPT):
+                    
+                    def handle_retry():
+                        nonlocal response_text
+                        response_text = ""
+                        loop.call_soon_threadsafe(q.put_nowait, {"type": "clear"})
+                        
+                    for chunk in invoke_stream(
+                        prompt=prompt, 
+                        system_instruction=CONVERSATION_SYSTEM_PROMPT,
+                        on_retry=handle_retry
+                    ):
                         response_text += chunk
                         loop.call_soon_threadsafe(q.put_nowait, {"type": "token", "content": chunk})
                     

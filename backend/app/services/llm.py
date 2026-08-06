@@ -10,7 +10,7 @@ Provider-agnostic LLM wrapper supporting Gemini and Groq:
 
 import time
 import json
-from typing import Any
+from typing import Any, Callable
 
 from google import genai
 from google.genai import types
@@ -85,11 +85,12 @@ def invoke_stream(
     temperature: float = DEFAULT_TEMPERATURE,
     max_output_tokens: int = MAX_OUTPUT_TOKENS,
     max_retries: int = 3,
+    on_retry: Callable[[], None] | None = None,
 ):
     if _provider == "groq":
-        yield from _invoke_stream_groq(prompt, system_instruction, temperature, max_output_tokens, max_retries)
+        yield from _invoke_stream_groq(prompt, system_instruction, temperature, max_output_tokens, max_retries, on_retry)
     else:
-        yield from _invoke_stream_gemini(prompt, system_instruction, temperature, max_output_tokens, max_retries)
+        yield from _invoke_stream_gemini(prompt, system_instruction, temperature, max_output_tokens, max_retries, on_retry)
 
 
 def invoke_structured(
@@ -162,6 +163,7 @@ def _invoke_stream_gemini(
     temperature: float = DEFAULT_TEMPERATURE,
     max_output_tokens: int = MAX_OUTPUT_TOKENS,
     max_retries: int = 3,
+    on_retry: Callable[[], None] | None = None,
 ):
     client = _get_gemini_client()
     config = types.GenerateContentConfig(
@@ -174,6 +176,9 @@ def _invoke_stream_gemini(
     last_error = None
     for attempt in range(1, max_retries + 1):
         try:
+            if attempt > 1 and on_retry:
+                on_retry()
+            
             start_time = time.monotonic()
             response_stream = client.models.generate_content_stream(
                 model=_gemini_model,
@@ -316,6 +321,7 @@ def _invoke_stream_groq(
     temperature: float = DEFAULT_TEMPERATURE,
     max_output_tokens: int = MAX_OUTPUT_TOKENS,
     max_retries: int = 3,
+    on_retry: Callable[[], None] | None = None,
 ):
     client = _get_groq_client()
     messages = _build_groq_messages(prompt, system_instruction)
@@ -323,6 +329,9 @@ def _invoke_stream_groq(
     
     for attempt in range(1, max_retries + 1):
         try:
+            if attempt > 1 and on_retry:
+                on_retry()
+            
             start_time = time.monotonic()
             response_stream = client.chat.completions.create(
                 model=_groq_model,
