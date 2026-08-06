@@ -222,7 +222,12 @@ async def delete_all_sessions(db: AsyncSession, user_id: str) -> int:
     return count
 
 
-async def get_recent_messages(db: AsyncSession, session_id: str, limit: int = 10) -> list[dict]:
+async def get_recent_messages(
+    db: AsyncSession, 
+    session_id: str, 
+    limit: int = 10,
+    exclude_message_id: str | None = None
+) -> list[dict]:
     """
     Retrieve the most recent messages for a session.
 
@@ -230,16 +235,17 @@ async def get_recent_messages(db: AsyncSession, session_id: str, limit: int = 10
         db: Async database session.
         session_id: UUID of the chat session.
         limit: Maximum number of messages to retrieve.
+        exclude_message_id: Optional message ID to exclude from the results.
 
     Returns:
         List of message dicts in chronological order.
     """
-    stmt = (
-        select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.timestamp.desc())
-        .limit(limit)
-    )
+    stmt = select(ChatMessage).where(ChatMessage.session_id == session_id)
+    
+    if exclude_message_id:
+        stmt = stmt.where(ChatMessage.id != exclude_message_id)
+        
+    stmt = stmt.order_by(ChatMessage.timestamp.desc()).limit(limit)
     result = await db.execute(stmt)
     messages = result.scalars().all()
 

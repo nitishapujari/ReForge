@@ -91,14 +91,21 @@ async def chat(
         session_id = session.id
         logger.info("Created new session: %s", session_id)
 
-    await chat_history.add_message(
+    # 1. Persist the current question immediately (Original Order)
+    new_msg = await chat_history.add_message(
         db=db,
         session_id=session_id,
         role="user",
         content=request.question,
     )
 
-    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+    # 2. Fetch the last 10 messages, explicitly excluding the one we just inserted
+    chat_history_data = await chat_history.get_recent_messages(
+        db, 
+        session_id, 
+        limit=10, 
+        exclude_message_id=new_msg.id
+    )
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
     if intent != Intent.KNOWLEDGE_QUERY:
         logger.info("Conversational intent %s detected, bypassing graph", intent.name)
