@@ -260,7 +260,7 @@ async def chat_stream(
         logger.info("Created new session (stream): %s", session_id)
 
     # Save the user message immediately
-    await chat_history.add_message(
+    new_msg = await chat_history.add_message(
         db=db,
         session_id=session_id,
         role="user",
@@ -269,7 +269,7 @@ async def chat_stream(
     
     await db.commit()
 
-    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
@@ -384,7 +384,7 @@ async def chat_stream(
                 clean_error = get_user_facing_error(e)
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
         # Fetch chat history before starting the thread
-        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10)
+        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
         # Start the graph execution in a background thread
         task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, chat_history_data))
         
