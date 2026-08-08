@@ -388,12 +388,14 @@ async def chat_stream(
         # Start the graph execution in a background thread
         task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, chat_history_data))
         
+        response_text = ""
         try:
             while True:
                 item = await q.get()
                 
                 if item["type"] == "token":
                     # Emit a token SSE
+                    response_text += item["content"]
                     yield f"data: {json.dumps(item)}\n\n"
                     
                 elif item["type"] == "status":
@@ -403,6 +405,24 @@ async def chat_stream(
                 elif item["type"] == "error":
                     # Emit an error SSE and break
                     yield f"data: {json.dumps(item)}\n\n"
+                    
+                    # Persist the partial text using V1 default metadata
+                    await chat_history.add_message(
+                        db=db,
+                        session_id=session_id,
+                        role="assistant",
+                        content=response_text or "Sorry, I could not generate an answer.",
+                        trace_data=None,
+                        metadata={
+                            "sources": [],
+                            "response_type": "GROUNDED",
+                            "verification_status": "VERIFIED",
+                            "grounded": False,
+                            "confidence": 0.0,
+                            "attempts": 1,
+                        }
+                    )
+                    await db.commit()
                     break
                     
                 elif item["type"] == "done":
