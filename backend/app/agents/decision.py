@@ -69,7 +69,8 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         # If generator gave a fallback answer (skipping critique) and we haven't tried web search
         is_fallback_answer = (
             NO_DOCUMENTS_RESPONSE in answer or
-            "general knowledge fallback" in state.get("critic_feedback", "")
+            NO_RELEVANT_DOCS_RESPONSE in answer or
+            "general knowledge fallback" in state.get("critic_feedback", "").lower()
         )
         
         # If there's missing information, we should rewrite the query to try and find it,
