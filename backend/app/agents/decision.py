@@ -10,7 +10,7 @@ import time
 from app.constants import CONFIDENCE_THRESHOLD
 from app.graph.state import GraphState, TraceEntry
 from langchain_core.runnables import RunnableConfig
-from app.prompts import NO_RELEVANT_DOCS_RESPONSE
+from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,7 +68,7 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         
         # If generator gave a fallback answer (skipping critique) and we haven't tried web search
         is_fallback_answer = (
-            "NO_DOCUMENTS_RESPONSE" in answer or # we can't import this easily but we know it's a fallback if grounded=True but no docs
+            NO_DOCUMENTS_RESPONSE in answer or
             "general knowledge fallback" in state.get("critic_feedback", "")
         )
         
