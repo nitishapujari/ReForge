@@ -712,7 +712,10 @@ function ChatContent() {
                                     }
                                   }}
                                 >
-                                  {message.content.replace(/\[(\d+)\]/g, '[$1](#citation-$1)')}
+                                  {message.content
+                                    .replace("I couldn't find any information about this in your uploaded documents, but based on my general knowledge: ", "")
+                                    .replace("I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic.", "")
+                                    .replace(/\[(\d+)\]/g, '[$1](#citation-$1)')}
                                 </ReactMarkdown>
                               )}
                             </>
@@ -737,7 +740,7 @@ function ChatContent() {
 
                     {message.role === "assistant" && message.metadata && message.status !== "error" && (
                       <div className="flex flex-wrap items-center gap-2 mt-1">
-                        {message.metadata.attempts && message.metadata.attempts > 1 && (
+                        {(message.metadata.attempts ?? 0) > 1 && (
                           <Badge variant="outline" className="text-xs bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20" title={`Answer was iteratively refined ${message.metadata.attempts} times before finalizing.`}>
                             <RefreshCw className="h-3 w-3 mr-1" />
                             Self-Healed ({message.metadata.attempts} passes)
