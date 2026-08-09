@@ -384,9 +384,9 @@ async def chat_stream(
                 clean_error = get_user_facing_error(e)
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
         # Fetch chat history before starting the thread
-        chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
+        rag_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
         # Start the graph execution in a background thread
-        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, chat_history_data))
+        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, rag_history_data))
         
         response_text = ""
         try:
