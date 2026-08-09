@@ -858,26 +858,26 @@ function ChatContent() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md"
+                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md"
                           onClick={() => handleCopy(message.id, message.content)}
                         >
                           {copiedId === message.id ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
                           {copiedId === message.id ? "Copied" : "Copy"}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md">
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md">
                           <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
                         </Button>
                         {message.metadata?.sources && message.metadata.sources.length > 0 && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary")}
+                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors hover:bg-primary/10", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary")}
                             onClick={() => setExpandedSources(prev => ({ ...prev, [message.id]: !prev[message.id] }))}
                           >
                             <FileText className="h-3 w-3 mr-1" /> {expandedSources[message.id] ? "Hide Sources" : "View Sources"}
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary rounded-md" onClick={() => router.push('/trace')}>
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md" onClick={() => router.push('/trace')}>
                           <Activity className="h-3 w-3 mr-1" /> Verification Log
                         </Button>
                         <div className="flex items-center gap-0 border rounded-md overflow-hidden bg-background ml-1">
