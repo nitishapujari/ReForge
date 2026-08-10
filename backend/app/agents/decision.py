@@ -10,7 +10,11 @@ import time
 from app.constants import CONFIDENCE_THRESHOLD
 from app.graph.state import GraphState, TraceEntry
 from langchain_core.runnables import RunnableConfig
-from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE
+from app.prompts import (
+    NO_RELEVANT_DOCS_RESPONSE,
+    NO_DOCUMENTS_RESPONSE,
+    NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -66,17 +70,17 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         docs = state.get("retrieved_docs", [])
         has_web_context = "web_context" in state and state["web_context"] is not None
         
-        # If generator gave a fallback answer (skipping critique) and we haven't tried web search
-        is_fallback_answer = (
-            NO_DOCUMENTS_RESPONSE in answer or
-            NO_RELEVANT_DOCS_RESPONSE in answer or
-            "general knowledge fallback" in state.get("critic_feedback", "").lower()
+        needs_web_search = (
+            NO_DOCUMENTS_RESPONSE in answer
+            or NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer
         )
-        
+
+        has_general_knowledge = NO_RELEVANT_DOCS_RESPONSE in answer
+
         # If there's missing information, we should rewrite the query to try and find it,
         # even if the current answer (e.g., "I don't know") is technically grounded.
-        if (not docs or is_fallback_answer) and not has_web_context:
-            logger.info("No local docs found or fallback generated, routing directly to web search.")
+        if (not docs or needs_web_search) and not has_web_context and not has_general_knowledge:
+            logger.info("No local docs found or unanswered fallback, routing directly to web search.")
             decision = "web_search"
         elif missing_information:
             decision = "rewrite"
