@@ -66,7 +66,7 @@ def critique_node(state: GraphState, config: RunnableConfig | None = None) -> di
     # If no answer was generated (e.g., fallback), we don't need a deep critique
     if (not answer or 
         NO_DOCUMENTS_RESPONSE in answer or 
-        NO_RELEVANT_DOCS_RESPONSE in answer or
+        NO_RELEVANT_DOCS_RESPONSE.strip() in answer or
         NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer):
         logger.info("Skipping critique for fallback answer.")
         elapsed_ms = (time.perf_counter() - start_time) * 1000

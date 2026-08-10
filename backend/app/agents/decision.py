@@ -75,7 +75,7 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
             or NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer
         )
 
-        has_general_knowledge = NO_RELEVANT_DOCS_RESPONSE in answer
+        has_general_knowledge = NO_RELEVANT_DOCS_RESPONSE.strip() in answer
 
         # If there's missing information, we should rewrite the query to try and find it,
         # even if the current answer (e.g., "I don't know") is technically grounded.
