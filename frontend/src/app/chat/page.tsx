@@ -713,8 +713,8 @@ function ChatContent() {
                                   }}
                                 >
                                   {message.content
-                                    .replace("I couldn't find any information about this in your uploaded documents, but based on my general knowledge: ", "")
-                                    .replace("I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic.", "")
+                                    .replace(/I couldn't find any information about this in your uploaded documents, but based on my general knowledge:\s*/, "")
+                                    .replace(/I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic\.?\s*/, "")
                                     .replace(/\[(\d+)\]/g, '[$1](#citation-$1)')}
                                 </ReactMarkdown>
                               )}
