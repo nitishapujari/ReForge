@@ -185,6 +185,8 @@ function ChatContent() {
       })
 
       if (response.ok) {
+        const data = await response.json()
+        setSelectedDocs(prev => [...prev, { document_id: data.document_id, filename: file.name }])
         setMessages(prev => [
           ...prev,
           {

@@ -58,6 +58,11 @@ import json
 
 def get_message_metadata_with_fallback(msg) -> dict:
     meta = msg.message_metadata or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
     
     # Extract trace data
     trace_data = msg.trace_data

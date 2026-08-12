@@ -143,7 +143,21 @@ def extract_text_from_txt(file_content: bytes) -> list[dict[str, str | int]]:
 def extract_text_from_docx(file_content: bytes) -> list[dict[str, str | int]]:
     try:
         doc = docx.Document(io.BytesIO(file_content))
-        text = "\n".join([para.text for para in doc.paragraphs if para.text.strip()])
+        
+        content = []
+        for element in doc.element.body:
+            if element.tag.endswith('}p'):
+                para = docx.text.paragraph.Paragraph(element, doc)
+                if para.text.strip():
+                    content.append(para.text.strip())
+            elif element.tag.endswith('}tbl'):
+                table = docx.table.Table(element, doc)
+                for row in table.rows:
+                    row_data = [cell.text.strip().replace('\n', ' ') for cell in row.cells if cell.text.strip()]
+                    if row_data:
+                        content.append(" | ".join(row_data))
+                        
+        text = "\n".join(content)
         if not text:
             raise DocumentProcessingError("The docx file is empty.")
         return [{"text": text, "page_number": 1}]
