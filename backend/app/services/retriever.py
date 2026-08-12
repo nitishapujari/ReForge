@@ -80,7 +80,7 @@ def retrieve(
     # ChromaDB cosine distance: 0 = identical, 2 = opposite
     # Normalized Similarity = 1 - (distance / 2) → range [0, 1]
     raw_similarity_scores = [
-        round(1.0 - (d / 2.0), 4) for d in distances
+        float(round(1.0 - (d / 2.0), 4)) for d in distances
     ]
 
     # Filter by score_threshold

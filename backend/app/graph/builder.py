@@ -158,7 +158,7 @@ def get_initial_state(question: str, session_id: str, user_id: str, chat_history
         "retrieved_docs": [],
         "retrieved_metadatas": [],
         "similarity_scores": [],
-        "top_k": 5,
+        "top_k": DEFAULT_TOP_K,
         "answer": None,
         "grounded": None,
         "confidence": None,

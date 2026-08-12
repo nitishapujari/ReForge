@@ -6,7 +6,7 @@ Centralised here to avoid hardcoded magic numbers.
 """
 
 DEFAULT_TOP_K: int = 15
-MAX_CONTEXT_CHUNKS: int = 5
+MAX_CONTEXT_CHUNKS: int = 15
 RELATIVE_MARGIN: float = 0.05
 EXPANDED_TOP_K: int = 20
 RELEVANCE_THRESHOLD: float = 0.50
