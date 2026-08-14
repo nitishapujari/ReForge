@@ -235,7 +235,7 @@ function ChatContent() {
     }
 
     setMessages((prev) => [...prev, userMessage, assistantMessage])
-    if (overrideInput === undefined) {
+    if (typeof overrideInput !== "string") {
       setInput("")
       setSelectedDocs([])
     }
@@ -860,26 +860,26 @@ function ChatContent() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md"
+                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md"
                           onClick={() => handleCopy(message.id, message.content)}
                         >
                           {copiedId === message.id ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
                           {copiedId === message.id ? "Copied" : "Copy"}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md">
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md">
                           <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
                         </Button>
                         {message.metadata?.sources && message.metadata.sources.length > 0 && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors hover:bg-primary/10", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary")}
+                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors hover:bg-primary/10 dark:hover:bg-primary/10 hover:text-primary", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground")}
                             onClick={() => setExpandedSources(prev => ({ ...prev, [message.id]: !prev[message.id] }))}
                           >
                             <FileText className="h-3 w-3 mr-1" /> {expandedSources[message.id] ? "Hide Sources" : "View Sources"}
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-md" onClick={() => router.push('/trace')}>
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md" onClick={() => router.push('/trace')}>
                           <Activity className="h-3 w-3 mr-1" /> Verification Log
                         </Button>
                         <div className="flex items-center gap-0 border rounded-md overflow-hidden bg-background ml-1">
@@ -1032,6 +1032,7 @@ function ChatContent() {
                           key={doc.document_id}
                           value={doc.filename}
                           onSelect={() => addDocumentMention(doc)}
+                          onMouseDown={(e) => e.preventDefault()}
                           className="cursor-pointer"
                         >
                           <FileText className="mr-2 h-4 w-4 text-primary/70" />

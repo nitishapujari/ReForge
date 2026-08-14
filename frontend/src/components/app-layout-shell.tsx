@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import React, { Suspense } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
@@ -33,7 +33,9 @@ export function AppLayoutShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <Suspense fallback={<div className="w-64 border-r bg-background/40 backdrop-blur-xl border-sidebar-border/50 shrink-0" />}>
+        <AppSidebar />
+      </Suspense>
       <main className="flex flex-1 flex-col bg-background w-full">
         <div className="flex h-12 items-center border-b px-4 shrink-0">
           <SidebarTrigger />
