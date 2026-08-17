@@ -14,6 +14,7 @@ from app.prompts import (
     NO_RELEVANT_DOCS_RESPONSE,
     NO_DOCUMENTS_RESPONSE,
     NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE,
+    DOCUMENT_CONSTRAINT_FAILURE_RESPONSE,
 )
 from app.utils.logger import get_logger
 
@@ -70,18 +71,22 @@ def decision_node(state: GraphState, config: RunnableConfig | None = None) -> di
         docs = state.get("retrieved_docs", [])
         has_web_context = "web_context" in state and state["web_context"] is not None
         
+        is_document_constraint_failure = answer == DOCUMENT_CONSTRAINT_FAILURE_RESPONSE
+        has_general_knowledge = NO_RELEVANT_DOCS_RESPONSE.strip() in answer
         needs_web_search = (
             NO_DOCUMENTS_RESPONSE in answer
             or NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer
         )
 
-        has_general_knowledge = NO_RELEVANT_DOCS_RESPONSE.strip() in answer
-
-        # If there's missing information, we should rewrite the query to try and find it,
-        # even if the current answer (e.g., "I don't know") is technically grounded.
-        if (not docs or needs_web_search) and not has_web_context and not has_general_knowledge:
+        if is_document_constraint_failure:
+            logger.info("Document constraint failure detected. Accepting terminal fallback.")
+            decision = "accept"
+        elif (not docs or needs_web_search) and not has_web_context and not has_general_knowledge:
             logger.info("No local docs found or unanswered fallback, routing directly to web search.")
             decision = "web_search"
+        elif has_general_knowledge or needs_web_search:
+            logger.info("Terminal fallback (general knowledge or exhausted web search) detected. Accepting.")
+            decision = "accept"
         elif missing_information:
             decision = "rewrite"
         elif not grounded or confidence < CONFIDENCE_THRESHOLD:

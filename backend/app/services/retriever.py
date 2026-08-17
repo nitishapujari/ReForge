@@ -54,13 +54,18 @@ def retrieve(
     effective_k = min(top_k, available)
 
     if document_ids:
-        doc_filter = {"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}}
-        where_filter: dict = {
-            "$and": [
-                {"user_id": user_id},
-                doc_filter
-            ]
-        }
+        if len(document_ids) == 1:
+            where_filter = {
+                "user_id": user_id,
+                "document_id": document_ids[0]
+            }
+        else:
+            where_filter = {
+                "$and": [
+                    {"user_id": user_id},
+                    {"document_id": {"$in": document_ids}}
+                ]
+            }
     else:
         where_filter: dict = {"user_id": user_id}
 
@@ -132,13 +137,18 @@ def retrieve_all(
             "similarity_scores": [],
         }
         
-    doc_filter = {"document_id": document_ids[0]} if len(document_ids) == 1 else {"document_id": {"$in": document_ids}}
-    where_filter: dict = {
-        "$and": [
-            {"user_id": user_id},
-            doc_filter
-        ]
-    }
+    if len(document_ids) == 1:
+        where_filter = {
+            "user_id": user_id,
+            "document_id": document_ids[0]
+        }
+    else:
+        where_filter = {
+            "$and": [
+                {"user_id": user_id},
+                {"document_id": {"$in": document_ids}}
+            ]
+        }
     
     # Use get() instead of query() to bypass semantic search and retrieve all matching records
     results = collection.get(

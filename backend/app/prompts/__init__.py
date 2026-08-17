@@ -60,6 +60,10 @@ NO_RELEVANT_DOCS_RESPONSE = (
     "I couldn't find any information about this in your uploaded documents, but based on my general knowledge: "
 )
 
+DOCUMENT_CONSTRAINT_FAILURE_RESPONSE = (
+    "I could not find any relevant text in the selected document."
+)
+
 NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE = (
     "I couldn't find any information about this in your uploaded documents, and I do not have confident general knowledge about this topic."
 )

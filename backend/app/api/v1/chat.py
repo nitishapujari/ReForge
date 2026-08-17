@@ -16,7 +16,13 @@ from app.api.deps import SessionDep, CurrentUser
 from app.graph import compile_graph, get_initial_state
 from app.models.database import get_db_session
 from app.models.schemas import ChatRequest, ChatResponse, TraceEntrySchema
-from app.prompts import NO_RELEVANT_DOCS_RESPONSE, NO_DOCUMENTS_RESPONSE, CONVERSATION_SYSTEM_PROMPT, NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE
+from app.prompts import (
+    NO_RELEVANT_DOCS_RESPONSE, 
+    NO_DOCUMENTS_RESPONSE, 
+    CONVERSATION_SYSTEM_PROMPT, 
+    NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE,
+    DOCUMENT_CONSTRAINT_FAILURE_RESPONSE
+)
 from app.services import chat_history
 from app.services.llm import invoke, invoke_stream
 from app.services.conversation_router import router as conversation_router, Intent
@@ -168,11 +174,16 @@ async def chat(
         verification_status = result.get("verification_status", "VERIFIED")
         
         response_type = "GROUNDED"
-        if final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE) or final_answer.startswith(NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE) or final_answer == NO_DOCUMENTS_RESPONSE:
+        if final_answer == DOCUMENT_CONSTRAINT_FAILURE_RESPONSE or final_answer == NO_DOCUMENTS_RESPONSE:
             response_type = "NO_CONTEXT"
             sources = [] # Don't show irrelevant sources
             grounded = False
             confidence = 0.0        
+        elif final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE) or final_answer.startswith(NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE):
+            response_type = "GENERAL_KNOWLEDGE"
+            sources = []
+            grounded = False
+            confidence = 0.0
         # Convert TraceEntry models to dicts for JSON storage
         trace_entries = result.get("trace", [])
         trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
@@ -259,17 +270,24 @@ async def chat_stream(
         session_id = session.id
         logger.info("Created new session (stream): %s", session_id)
 
-    # Save the user message immediately
-    new_msg = await chat_history.add_message(
-        db=db,
-        session_id=session_id,
-        role="user",
-        content=request.question,
-    )
+    # Save the user message immediately, unless regenerating
+    new_msg = None
+    if request.regenerate_message_id:
+        await chat_history.delete_message(db, request.regenerate_message_id)
+        recent = await chat_history.get_recent_messages(db, session_id, limit=1)
+        if recent and recent[0].role == "user":
+            new_msg = recent[0]
+    else:
+        new_msg = await chat_history.add_message(
+            db=db,
+            session_id=session_id,
+            role="user",
+            content=request.question,
+        )
     
     await db.commit()
 
-    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id if new_msg else None)
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
@@ -436,7 +454,7 @@ async def chat_stream(
                     verification_status = result.get("verification_status", "VERIFIED")
                     
                     response_type = "GROUNDED"
-                    if final_answer.startswith(NO_DOCUMENTS_RESPONSE):
+                    if final_answer == DOCUMENT_CONSTRAINT_FAILURE_RESPONSE or final_answer.startswith(NO_DOCUMENTS_RESPONSE):
                         response_type = "NO_CONTEXT"
                         sources = []
                         grounded = False

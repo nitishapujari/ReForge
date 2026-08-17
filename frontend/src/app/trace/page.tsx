@@ -319,6 +319,16 @@ export default function TracePage() {
   const [loadingTrace, setLoadingTrace] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const session = params.get('session')
+      if (session) {
+        setSelectedSessionId(session)
+      }
+    }
+  }, [])
+
   // Fetch Sessions
   useEffect(() => {
     const fetchSessions = async () => {

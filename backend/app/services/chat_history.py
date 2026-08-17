@@ -155,6 +155,16 @@ async def add_message(
     return message
 
 
+async def delete_message(db: AsyncSession, message_id: str) -> bool:
+    stmt = select(ChatMessage).where(ChatMessage.id == message_id)
+    result = await db.execute(stmt)
+    msg = result.scalar_one_or_none()
+    if msg:
+        await db.delete(msg)
+        return True
+    return False
+
+
 async def delete_session(db: AsyncSession, session_id: str, user_id: str) -> bool:
     """
     Delete a chat session and all its messages (cascade).

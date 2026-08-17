@@ -15,7 +15,8 @@ from app.prompts import (
     CRITIC_USER_PROMPT,
     NO_DOCUMENTS_RESPONSE,
     NO_RELEVANT_DOCS_RESPONSE,
-    NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE
+    NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE,
+    DOCUMENT_CONSTRAINT_FAILURE_RESPONSE
 )
 from app.services import llm
 from app.utils.logger import get_logger
@@ -67,21 +68,27 @@ def critique_node(state: GraphState, config: RunnableConfig | None = None) -> di
     if (not answer or 
         NO_DOCUMENTS_RESPONSE in answer or 
         NO_RELEVANT_DOCS_RESPONSE.strip() in answer or
-        NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer):
+        NO_RELEVANT_DOCS_AND_NO_KNOWLEDGE_RESPONSE in answer or
+        answer == DOCUMENT_CONSTRAINT_FAILURE_RESPONSE):
         logger.info("Skipping critique for fallback answer.")
         elapsed_ms = (time.perf_counter() - start_time) * 1000
+        
+        feedback_str = "General knowledge fallback provided."
+        if answer == DOCUMENT_CONSTRAINT_FAILURE_RESPONSE:
+            feedback_str = "Selected document contained no relevant text."
+            
         trace_entry = TraceEntry(
             node="critique",
             execution_time_ms=round(elapsed_ms, 2),
             input_summary=f"answer_len={len(answer)} (fallback)",
-            output_summary="skipped evaluation - accepted general knowledge fallback",
+            output_summary="skipped evaluation - accepted fallback",
             attempt=attempt,
             decision="accept",
         )
         return {
-            "grounded": True, # Set to True so the decision node accepts it immediately
-            "confidence": 1.0,
-            "critic_feedback": "General knowledge fallback provided.",
+            "grounded": False,
+            "confidence": 0.0,
+            "critic_feedback": feedback_str,
             "unsupported_claims": [],
             "missing_information": [],
             "verification_status": "VERIFIED",

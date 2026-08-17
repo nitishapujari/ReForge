@@ -74,6 +74,111 @@ function ChatContent() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const handleRegenerate = async (assistantMessageId: string) => {
+    if (isGenerating) return
+    const assistantIdx = messages.findIndex(m => m.id === assistantMessageId)
+    if (assistantIdx < 1) return
+    const userMessage = messages.slice(0, assistantIdx).reverse().find(m => m.role === "user")
+    if (!userMessage) return
+
+    setMessages(prev => prev.map(m => 
+      m.id === assistantMessageId 
+        ? { ...m, content: "", status: "generating", metadata: undefined } 
+        : m
+    ))
+    setIsGenerating(true)
+    setSuggestions([])
+
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
+    try {
+      const response = await fetch("/api/v1/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: userMessage.content,
+          session_id: sessionId || null,
+          document_ids: userMessage.attached_documents?.map(d => d.document_id) || [],
+          regenerate_message_id: assistantMessageId
+        }),
+        signal: abortController.signal
+      })
+
+      if (!response.ok) {
+        throw new Error(`Error: ${response.status} ${response.statusText}`)
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder("utf-8")
+      if (!reader) throw new Error("No reader from response body")
+
+      let accumulatedAnswer = ""
+      let finalMetadata: any = null
+
+      while (true) {
+        const { value, done } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.slice(6).trim()
+            if (dataStr === '[DONE]') continue
+            
+            try {
+              const data = JSON.parse(dataStr)
+              if (data.type === 'token') {
+                accumulatedAnswer += data.content
+                setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
+              } else if (data.type === 'clear') {
+                accumulatedAnswer = ""
+                setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
+              } else if (data.type === 'final') {
+                finalMetadata = {
+                  sources: data.sources,
+                  response_type: data.response_type,
+                  verification_status: data.verification_status,
+                  grounded: data.grounded,
+                  confidence: data.confidence,
+                  attempts: data.attempts,
+                  trace_data: data.trace_data,
+                }
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantMessageId ? { ...m, content: accumulatedAnswer, status: "done", metadata: finalMetadata } : m
+                ))
+              }
+            } catch (e) {
+              console.error("Error parsing SSE data:", e)
+            }
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, status: "done" } : m))
+      } else {
+        console.error("Stream error:", err)
+        setMessages((prev) => prev.map((m) =>
+          m.id === assistantMessageId ? { ...m, status: "error", content: "Sorry, an error occurred while generating the response." } : m
+        ))
+      }
+    } finally {
+      setIsGenerating(false)
+      abortControllerRef.current = null
+      
+      setIsLoadingSuggestions(true)
+      fetch(`/api/v1/chat/${sessionId}/suggestions`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.suggestions) setSuggestions(data.suggestions)
+        })
+        .catch(err => console.error("Failed to fetch suggestions:", err))
+        .finally(() => setIsLoadingSuggestions(false))
+    }
+  }
+
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -860,26 +965,36 @@ function ChatContent() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md"
+                          className="h-6 px-2 text-[10px] text-muted-foreground rounded-md"
                           onClick={() => handleCopy(message.id, message.content)}
                         >
                           {copiedId === message.id ? <Check className="h-3 w-3 mr-1 text-green-500" /> : <Copy className="h-3 w-3 mr-1" />}
                           {copiedId === message.id ? "Copied" : "Copy"}
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-[10px] text-muted-foreground rounded-md"
+                          onClick={() => handleRegenerate(message.id)}
+                        >
                           <RefreshCw className="h-3 w-3 mr-1" /> Regenerate
                         </Button>
                         {message.metadata?.sources && message.metadata.sources.length > 0 && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors hover:bg-primary/10 dark:hover:bg-primary/10 hover:text-primary", expandedSources[message.id] ? "bg-primary/10 text-primary" : "text-muted-foreground")}
+                            className={cn("h-6 px-2 text-[10px] rounded-md transition-colors", expandedSources[message.id] ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground")}
                             onClick={() => setExpandedSources(prev => ({ ...prev, [message.id]: !prev[message.id] }))}
                           >
                             <FileText className="h-3 w-3 mr-1" /> {expandedSources[message.id] ? "Hide Sources" : "View Sources"}
                           </Button>
                         )}
-                        <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] text-muted-foreground hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/10 rounded-md" onClick={() => router.push('/trace')}>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 px-2 text-[10px] text-muted-foreground rounded-md" 
+                          onClick={() => router.push(`/trace?session=${sessionId}`)}
+                        >
                           <Activity className="h-3 w-3 mr-1" /> Verification Log
                         </Button>
                         <div className="flex items-center gap-0 border rounded-md overflow-hidden bg-background ml-1">

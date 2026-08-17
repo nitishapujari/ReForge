@@ -22,6 +22,7 @@ from app.prompts import (
     GENERAL_KNOWLEDGE_USER_PROMPT,
     NO_DOCUMENTS_RESPONSE,
     NO_RELEVANT_DOCS_RESPONSE,
+    DOCUMENT_CONSTRAINT_FAILURE_RESPONSE,
 )
 from app.services import llm
 from app.utils.logger import get_logger
@@ -59,6 +60,25 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     # Handle empty retrieval results
     if not docs and not web_context_list:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+        if state.get("document_ids"):
+            logger.info("No retrieved docs for constrained document query — aborting fallback")
+            trace_entry = TraceEntry(
+                node="generate",
+                execution_time_ms=round(elapsed_ms, 2),
+                input_summary=f"question='{question[:60]}', docs=0, constrained=True",
+                output_summary="aborted - no relevant docs in selected document",
+                attempt=attempt,
+                decision=None,
+                retrieval_diagnostics=[],
+            )
+            return {
+                "assembled_context": "",
+                "answer": DOCUMENT_CONSTRAINT_FAILURE_RESPONSE,
+                "sources": [],
+                "trace": state.get("trace", []) + [trace_entry],
+            }
+
         logger.info("No retrieved docs and no web context — falling back to general knowledge")
 
         trace_entry = TraceEntry(
@@ -115,6 +135,11 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
     doc_groups = defaultdict(list)
     for doc, meta, score in zip(docs, metas, scores):
         filename = meta.get("filename", "unknown")
+        
+        # SECONDARY DEFENSE: Enforce document_ids constraint strictly
+        if state.get("document_ids"):
+            if meta.get("document_id") not in state["document_ids"]:
+                continue
         
         is_dup = False
         for i, existing in enumerate(doc_groups[filename]):
@@ -228,6 +253,25 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
 
     if not grouped_sources and not web_context_list:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+        if state.get("document_ids"):
+            logger.info("No docs passed filters for constrained document query — aborting fallback")
+            trace_entry = TraceEntry(
+                node="generate",
+                execution_time_ms=round(elapsed_ms, 2),
+                input_summary=f"question='{question[:60]}', docs={len(docs)}, constrained=True",
+                output_summary="aborted - no relevant docs in selected document",
+                attempt=attempt,
+                decision=None,
+                retrieval_diagnostics=diagnostics,
+            )
+            return {
+                "assembled_context": "",
+                "answer": DOCUMENT_CONSTRAINT_FAILURE_RESPONSE,
+                "sources": [],
+                "trace": state.get("trace", []) + [trace_entry],
+            }
+
         logger.info(
             "No docs passed filters (best=%.2f, absolute=%.2f) and no web context — fallback",
             best_doc_score,

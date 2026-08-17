@@ -42,6 +42,10 @@ class ChatRequest(BaseModel):
         description="Existing session ID. If omitted, a new session is created.",
         examples=["550e8400-e29b-41d4-a716-446655440000"],
     )
+    regenerate_message_id: str | None = Field(
+        default=None,
+        description="If provided, indicates this is a regeneration of an existing assistant message.",
+    )
     document_ids: list[str] | None = Field(
         default=None,
         description="Optional list of specific document IDs to restrict retrieval to.",
