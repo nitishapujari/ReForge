@@ -17,13 +17,7 @@ export default withAuth(
         requestHeaders.set("Authorization", `Bearer ${token.accessToken}`);
       }
 
-      const backendBase = process.env.BACKEND_URL || "http://127.0.0.1:8000";
-      const backendUrl = new URL(req.nextUrl.pathname, backendBase);
-      backendUrl.search = req.nextUrl.search;
-
-      requestHeaders.delete("host");
-
-      return NextResponse.rewrite(backendUrl, {
+      return NextResponse.next({
         request: {
           headers: requestHeaders,
         },
