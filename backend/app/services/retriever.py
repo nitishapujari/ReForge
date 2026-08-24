@@ -56,8 +56,10 @@ def retrieve(
     if document_ids:
         if len(document_ids) == 1:
             where_filter = {
-                "user_id": user_id,
-                "document_id": document_ids[0]
+                "$and": [
+                    {"user_id": user_id},
+                    {"document_id": document_ids[0]}
+                ]
             }
         else:
             where_filter = {
@@ -139,8 +141,10 @@ def retrieve_all(
         
     if len(document_ids) == 1:
         where_filter = {
-            "user_id": user_id,
-            "document_id": document_ids[0]
+            "$and": [
+                {"user_id": user_id},
+                {"document_id": document_ids[0]}
+            ]
         }
     else:
         where_filter = {
