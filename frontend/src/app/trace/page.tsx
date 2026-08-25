@@ -164,11 +164,11 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
                     <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5"><BarChart3 className="w-3 h-3"/> Match Quality</p>
                     <div className="flex items-center justify-between">
                       {parsedOutput.top_score >= 0.75 ? (
-                         <span className="text-xs font-bold text-green-600 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1">🟢 High Match</span>
+                         <span className="text-xs font-bold text-green-600 bg-green-500/10 px-2 py-1 rounded flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> High Match</span>
                       ) : parsedOutput.top_score >= 0.50 ? (
-                         <span className="text-xs font-bold text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded flex items-center gap-1">🟡 Medium Match</span>
+                         <span className="text-xs font-bold text-yellow-600 bg-yellow-500/10 px-2 py-1 rounded flex items-center gap-1"><AlertCircle className="w-3.5 h-3.5" /> Medium Match</span>
                       ) : (
-                         <span className="text-xs font-bold text-red-600 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1">🔴 Low Match</span>
+                         <span className="text-xs font-bold text-red-600 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1"><XCircle className="w-3.5 h-3.5" /> Low Match</span>
                       )}
                       <span className="text-xs font-semibold text-muted-foreground">{parsedOutput.top_score} relevance</span>
                     </div>
@@ -599,13 +599,13 @@ export default function TracePage() {
                             const finalDecision = lastEntries.find(e => e.node === 'decision')
                             const retrievalEntry = lastEntries.find(e => e.node === 'retrieve')
                             
-                            let qualityBadge = <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-bold text-sm">🟢 Highly Grounded</span>
+                            let qualityBadge = <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full font-bold text-sm flex items-center gap-1 w-fit"><CheckCircle2 className="w-4 h-4" /> Verified Accurate</span>
                             if (finalDecision) {
                               try {
                                 const parsed = JSON.parse(finalDecision.output_summary)
-                                if (parsed.decision === 'fail') qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm">🔴 Low Confidence</span>
+                                if (parsed.decision === 'fail') qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm flex items-center gap-1 w-fit"><XCircle className="w-4 h-4" /> Low Confidence</span>
                               } catch {
-                                if (finalDecision.output_summary.includes("fail")) qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm">🔴 Low Confidence</span>
+                                if (finalDecision.output_summary.includes("fail")) qualityBadge = <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full font-bold text-sm flex items-center gap-1 w-fit"><XCircle className="w-4 h-4" /> Low Confidence</span>
                               }
                             }
 
