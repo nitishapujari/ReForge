@@ -271,12 +271,9 @@ async def chat_stream(
         logger.info("Created new session (stream): %s", session_id)
 
     # Save the user message immediately, unless regenerating
-    new_msg = None
+    exclude_id = None
     if request.regenerate_message_id:
         await chat_history.delete_message(db, request.regenerate_message_id)
-        recent = await chat_history.get_recent_messages(db, session_id, limit=1)
-        if recent and recent[0].role == "user":
-            new_msg = recent[0]
     else:
         new_msg = await chat_history.add_message(
             db=db,
@@ -284,10 +281,13 @@ async def chat_stream(
             role="user",
             content=request.question,
         )
+        exclude_id = new_msg.id
     
     await db.commit()
 
-    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id if new_msg else None)
+    chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=exclude_id)
+    if request.regenerate_message_id and chat_history_data and chat_history_data[-1].get("role") == "user" and chat_history_data[-1].get("content") == request.question:
+        chat_history_data.pop()
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
@@ -401,8 +401,8 @@ async def chat_stream(
                 logger.error("Streaming generation failed: %s", str(e))
                 clean_error = get_user_facing_error(e)
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
-        # Fetch chat history before starting the thread
-        rag_history_data = await chat_history.get_recent_messages(db, session_id, limit=10, exclude_message_id=new_msg.id)
+        # Use the already fetched chat history
+        rag_history_data = chat_history_data
         # Start the graph execution in a background thread
         task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, rag_history_data))
         
