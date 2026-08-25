@@ -241,9 +241,9 @@ function RagPipelineVisualizer() {
   const getLabel = () => {
     switch (step) {
       case 1: return "Parsing Query..."
-      case 2: return "Searching Vector DB..."
+      case 2: return "Searching Documents..."
       case 3: return "Evaluating Context..."
-      case 4: return "Hallucination Detected! Healing..."
+      case 4: return "Verifying Answer Accuracy..."
       case 5: return "Synthesizing Grounded Response"
       default: return "System Idle"
     }
