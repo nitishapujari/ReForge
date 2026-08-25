@@ -711,7 +711,7 @@ function ChatContent() {
                                             if (isDone) {
                                               text = text.replace("Searching documents...", "Searched documents")
                                                 .replace("Drafting response...", "Drafted response")
-                                                .replace("Critic evaluating draft...", "Critic evaluated draft")
+                                                .replace("Critic evaluating draft...", "Evaluated draft accuracy")
                                             }
                                             return <span className="flex-1">{text}</span>
                                           })()}
@@ -754,25 +754,25 @@ function ChatContent() {
                                       } else if (trace.node === 'critique') {
                                         icon = <Scale className="w-3 h-3 text-orange-500" />
                                         if (trace.output_summary?.includes('"grounded": true')) {
-                                          text = `Critic verified response is grounded.`
+                                          text = `Verified response accuracy against documents.`
                                         } else if (trace.output_summary?.includes('"grounded": false')) {
-                                          text = `Critic rejected draft for lacking grounding.`
+                                          text = `Rejected draft for lacking supporting evidence.`
                                         } else {
-                                          text = `Critic verification unavailable.`
+                                          text = `Accuracy verification unavailable.`
                                         }
                                       } else if (trace.node === 'rewrite') {
                                         icon = <RefreshCw className="w-3 h-3 text-indigo-500" />
                                         text = `Reformulated search query to try again.`
                                       } else if (trace.node === 'router') {
                                         icon = <GitBranch className="w-3 h-3 text-gray-500" />
-                                        text = trace.decision === 'bypass' ? "Decided to bypass RAG (general conversation)." : "Decided to route to RAG."
+                                        text = trace.decision === 'bypass' ? "Decided to use general knowledge (no documents needed)." : "Decided to search documents."
                                       } else if (trace.node === 'decision') {
                                         icon = <GitBranch className="w-3 h-3 text-gray-500" />
                                         if (trace.decision === 'accept') {
                                           if (trace.input_summary?.includes('"grounded": null')) {
                                             text = "Accepted best-effort answer (verification unavailable)."
                                           } else {
-                                            text = "Accepted answer as grounded."
+                                            text = "Accepted answer as accurate."
                                           }
                                         } else if (trace.decision === 'rewrite') {
                                           text = "Decided to retry formulation."

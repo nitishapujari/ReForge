@@ -255,7 +255,7 @@ const TraceNode = ({ entry, finalOutcome }: { entry: TraceEntry, finalOutcome?: 
                           return (
                             <div className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-md">
                               <p className="text-xs font-bold text-yellow-700 dark:text-yellow-400 mb-1 flex items-center gap-1.5"><RotateCcw className="w-3 h-3"/> {finalParsed.final_action || "Verification Incomplete"}</p>
-                              <p className="text-xs text-foreground/80 leading-relaxed">{finalParsed.reason || "The critic detected missing information. ReForge automatically searched again using an improved query."}</p>
+                              <p className="text-xs text-foreground/80 leading-relaxed">{finalParsed.reason || "The verification step detected missing information. ReForge automatically searched again using an improved query."}</p>
                             </div>
                           )
                         } else if (finalParsed?.decision === 'fail') {
