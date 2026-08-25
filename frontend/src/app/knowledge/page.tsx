@@ -234,8 +234,8 @@ export default function KnowledgeBasePage() {
                 <TableRow>
                   <TableHead className="w-[45%]">Document</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Chunks</TableHead>
-                  <TableHead className="text-right">Ingested On</TableHead>
+                  <TableHead className="text-right">Segments</TableHead>
+                  <TableHead className="text-right">Uploaded On</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
