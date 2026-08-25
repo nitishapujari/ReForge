@@ -30,9 +30,9 @@ const formatStatus = (status: TaskStatus) => {
   switch (status) {
     case "uploading": return "Uploading document..."
     case "extracting text": return "Extracting text..."
-    case "generating embeddings": return "Generating embeddings..."
-    case "indexing document": return "Indexing document..."
-    case "indexed successfully": return "Indexed successfully ✓"
+    case "generating embeddings": return "Analyzing document..."
+    case "indexing document": return "Saving to knowledge base..."
+    case "indexed successfully": return "Saved successfully ✓"
     default: return status
   }
 }
@@ -60,7 +60,7 @@ const getFriendlyErrorMessage = (error: any, status?: number): string => {
   const lowerMsg = msg.toLowerCase()
   
   if (status === 429 || lowerMsg.includes("quota exceeded") || lowerMsg.includes("rate limit") || lowerMsg.includes("429")) {
-    return "Embedding service quota reached. Please try again later."
+    return "Document processing quota reached. Please try again later."
   }
   if (lowerMsg.includes("failed to fetch") || lowerMsg.includes("network error") || lowerMsg.includes("econnrefused")) {
     return "Unable to connect to the server. Please check your connection and try again."
