@@ -1044,14 +1044,14 @@ function ChatContent() {
         </div>
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-10 pb-4 px-4 sm:px-6 z-20">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background to-transparent pt-10 pb-4 px-4 sm:px-6 z-20 pointer-events-none">
         <AnimatePresence>
           {!isAtBottom && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 10 }}
-              className="absolute -top-6 left-1/2 -translate-x-1/2 z-30"
+              className="absolute -top-6 left-1/2 -translate-x-1/2 z-30 pointer-events-auto"
             >
               <Button
                 variant="outline"
@@ -1068,7 +1068,7 @@ function ChatContent() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.3 }}
-          className="max-w-3xl mx-auto relative flex flex-col gap-2 bg-background/60 backdrop-blur-2xl border border-primary/20 rounded-[2rem] p-2 shadow-xl hover:shadow-primary/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-2xl focus-within:shadow-primary/20 transition-all duration-300"
+          className="max-w-3xl mx-auto relative flex flex-col gap-2 bg-background/60 backdrop-blur-2xl border border-primary/20 rounded-[2rem] p-2 shadow-xl hover:shadow-primary/5 focus-within:ring-2 focus-within:ring-primary/30 focus-within:border-primary/50 focus-within:shadow-2xl focus-within:shadow-primary/20 transition-all duration-300 pointer-events-auto"
         >
           {/* Selected Document Badges */}
           {selectedDocs.length > 0 && (
