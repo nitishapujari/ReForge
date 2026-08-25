@@ -961,7 +961,7 @@ function ChatContent() {
 
                     {/* Message Action Bar */}
                     {message.role === "assistant" && message.status === "done" && (
-                      <div className="opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1">
+                      <div className="opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1">
                         <Button
                           variant="ghost"
                           size="sm"
