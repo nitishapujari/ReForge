@@ -115,42 +115,63 @@ function ChatContent() {
 
       let accumulatedAnswer = ""
       let finalMetadata: any = null
+      let buffer = ""
 
       while (true) {
         const { value, done } = await reader.read()
         if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split('\n')
+        
+        if (value) {
+          buffer += decoder.decode(value, { stream: true })
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim()
-            if (dataStr === '[DONE]') continue
-            
-            try {
-              const data = JSON.parse(dataStr)
-              if (data.type === 'token') {
-                accumulatedAnswer += data.content
-                setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
-              } else if (data.type === 'clear') {
-                accumulatedAnswer = ""
-                setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
-              } else if (data.type === 'final') {
-                finalMetadata = {
-                  sources: data.sources,
-                  response_type: data.response_type,
-                  verification_status: data.verification_status,
-                  grounded: data.grounded,
-                  confidence: data.confidence,
-                  attempts: data.attempts,
-                  trace_data: data.trace_data,
+          let boundaryIndex;
+          while ((boundaryIndex = buffer.indexOf('\n\n')) >= 0) {
+            const eventPayload = buffer.slice(0, boundaryIndex);
+            buffer = buffer.slice(boundaryIndex + 2);
+
+            const lines = eventPayload.split('\n')
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6).trim()
+                if (dataStr === '[DONE]' || !dataStr) continue
+                
+                try {
+                  const data = JSON.parse(dataStr)
+                  if (data.type === 'token') {
+                    accumulatedAnswer += data.content
+                    setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
+                  } else if (data.type === 'clear') {
+                    accumulatedAnswer = ""
+                    setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, content: accumulatedAnswer } : m))
+                  } else if (data.type === 'status') {
+                    setMessages((prev) => prev.map((m) =>
+                      m.id === assistantMessageId ? { ...m, agentStatuses: [...(m.agentStatuses || []), { message: data.message, status: data.status }] } : m
+                    ))
+                  } else if (data.type === 'error') {
+                    setMessages((prev) => prev.map((m) =>
+                      m.id === assistantMessageId ? { ...m, status: "error", content: data.error || "An unexpected error occurred." } : m
+                    ))
+                    break
+                  } else if (data.type === 'done') {
+                    finalMetadata = {
+                      response_type: data.response_type,
+                      verification_status: data.verification_status,
+                      grounded: data.grounded,
+                      confidence: data.confidence,
+                      attempts: data.attempts,
+                      sources: data.sources,
+                      trace_available: data.trace_available,
+                      trace_data: data.trace_data,
+                    }
+                    setMessages((prev) => prev.map((m) =>
+                      m.id === assistantMessageId ? { ...m, content: accumulatedAnswer || data.final_answer || m.content, status: "done", metadata: finalMetadata } : m
+                    ))
+                  }
+                } catch (e) {
+                  console.error("Error parsing SSE data:", e, dataStr)
                 }
-                setMessages((prev) => prev.map((m) =>
-                  m.id === assistantMessageId ? { ...m, content: accumulatedAnswer, status: "done", metadata: finalMetadata } : m
-                ))
               }
-            } catch (e) {
-              console.error("Error parsing SSE data:", e)
             }
           }
         }
@@ -961,7 +982,7 @@ function ChatContent() {
 
                     {/* Message Action Bar */}
                     {message.role === "assistant" && message.status === "done" && (
-                      <div className="opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1">
+                      <div className="relative opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1 before:absolute before:-inset-y-4 before:-inset-x-2 before:-z-10 before:content-['']">
                         <Button
                           variant="ghost"
                           size="sm"
