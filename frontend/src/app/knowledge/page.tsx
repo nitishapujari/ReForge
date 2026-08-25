@@ -349,7 +349,7 @@ export default function KnowledgeBasePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <span className="font-semibold text-foreground">"{documentToDelete?.filename}"</span> and its {documentToDelete?.chunk_count} chunks from the vector database. This action cannot be undone.
+              This will permanently delete <span className="font-semibold text-foreground">"{documentToDelete?.filename}"</span> from your knowledge base. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -397,7 +397,7 @@ export default function KnowledgeBasePage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Document Details</DialogTitle>
-            <DialogDescription>Information about the ingested document.</DialogDescription>
+            <DialogDescription>Information about the uploaded document.</DialogDescription>
           </DialogHeader>
           {documentToView && (
             <div className="space-y-4 py-4 text-sm">
@@ -418,11 +418,11 @@ export default function KnowledgeBasePage() {
                 <span className="col-span-2 capitalize">{documentToView.status}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-muted-foreground font-medium">Vector Chunks</span>
+                <span className="text-muted-foreground font-medium">Segments</span>
                 <span className="col-span-2">{documentToView.chunk_count.toLocaleString()}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 pb-2">
-                <span className="text-muted-foreground font-medium">Ingested On</span>
+                <span className="text-muted-foreground font-medium">Uploaded On</span>
                 <span className="col-span-2">{new Date(documentToView.created_at).toLocaleString()}</span>
               </div>
             </div>
