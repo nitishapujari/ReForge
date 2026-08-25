@@ -184,6 +184,16 @@ async def chat(
             sources = []
             grounded = False
             confidence = 0.0
+        elif grounded is False:
+            sources = []
+            confidence = 0.0
+            if request.document_ids:
+                response_type = "NO_CONTEXT"
+                final_answer = DOCUMENT_CONSTRAINT_FAILURE_RESPONSE
+            else:
+                response_type = "GENERAL_KNOWLEDGE"
+                if not final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE):
+                    final_answer = NO_RELEVANT_DOCS_RESPONSE + final_answer
         # Convert TraceEntry models to dicts for JSON storage
         trace_entries = result.get("trace", [])
         trace_data = [t.model_dump() if hasattr(t, "model_dump") else t for t in trace_entries] if trace_entries else None
@@ -464,6 +474,16 @@ async def chat_stream(
                         sources = []
                         grounded = False
                         confidence = 0.0                    
+                    elif grounded is False:
+                        sources = []
+                        confidence = 0.0
+                        if request.document_ids:
+                            response_type = "NO_CONTEXT"
+                            final_answer = DOCUMENT_CONSTRAINT_FAILURE_RESPONSE
+                        else:
+                            response_type = "GENERAL_KNOWLEDGE"
+                            if not final_answer.startswith(NO_RELEVANT_DOCS_RESPONSE):
+                                final_answer = NO_RELEVANT_DOCS_RESPONSE + final_answer
                     # Ensure final message is saved in DB
                     trace_data = result.get("trace")
                     

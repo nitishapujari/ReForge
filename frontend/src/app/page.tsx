@@ -184,7 +184,7 @@ function HeroSection({ providerInfo }: { providerInfo: { provider: string, model
           initial="hidden"
           animate="show"
         >
-          {["The", "Self-Healing", "RAG", "Pipeline"].map((word, i) => (
+          {["Your", "Intelligent", "Knowledge", "Assistant"].map((word, i) => (
             <motion.span
               key={i}
               variants={{
