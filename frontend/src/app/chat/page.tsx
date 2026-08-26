@@ -361,10 +361,8 @@ function ChatContent() {
     }
 
     setMessages((prev) => [...prev, userMessage, assistantMessage])
-    if (typeof overrideInput !== "string") {
-      setInput("")
-      setSelectedDocs([])
-    }
+    setInput("")
+    setSelectedDocs([])
     setIsGenerating(true)
     setSuggestions([])
 
