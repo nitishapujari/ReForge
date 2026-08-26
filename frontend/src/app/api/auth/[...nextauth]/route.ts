@@ -45,7 +45,11 @@ export const authOptions: AuthOptions = {
               accessToken: data.access_token,
             };
           } else {
-            throw new Error(data.error?.message || "Authentication failed");
+            throw new Error(
+              data.detail?.error?.message ||
+              data.error?.message ||
+              (typeof data.detail === 'string' ? data.detail : "Authentication failed")
+            );
           }
         } catch (error: any) {
           throw new Error(error.message || "Something went wrong");
