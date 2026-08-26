@@ -290,6 +290,7 @@ async def chat_stream(
             session_id=session_id,
             role="user",
             content=request.question,
+            metadata={"attached_document_ids": request.document_ids} if request.document_ids else None
         )
         exclude_id = new_msg.id
     

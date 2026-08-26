@@ -248,7 +248,13 @@ function ChatContent() {
               role: m.role,
               content: m.content,
               status: "done",
-              metadata: m.metadata || {}
+              metadata: m.metadata || {},
+              attached_documents: m.metadata?.attached_document_ids
+                ? m.metadata.attached_document_ids.map((id: string) => ({
+                    document_id: id,
+                    filename: "Attached Document"
+                  }))
+                : undefined
             })))
           }
         })
