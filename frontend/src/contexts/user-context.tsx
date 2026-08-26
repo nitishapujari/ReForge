@@ -7,6 +7,7 @@ export type ThemePreference = "light" | "dark" | "system"
 
 export interface User {
   id: string
+  email: string
   fullName: string
   avatarInitials: string
   themePreference: ThemePreference
@@ -41,6 +42,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       setUser({
         id: session.user.id as string || "unknown",
+        email: session.user.email || "",
         fullName: name,
         avatarInitials: initials,
         themePreference: "system", // Would normally come from DB/Preferences

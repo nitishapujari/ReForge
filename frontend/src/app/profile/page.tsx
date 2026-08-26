@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { 
   User2, Calendar, Monitor, CheckCircle2, 
-  Copy, Check, FileText, MessageSquare, Activity
+  Copy, Check, FileText, MessageSquare, Activity, Mail
 } from "lucide-react"
 
 function AnimatedNumber({ value }: { value: number }) {
@@ -90,7 +90,7 @@ export default function ProfilePage() {
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
         <p className="text-muted-foreground mt-1">
-          Manage your personal information and view account usage.
+          View your personal information and account usage.
         </p>
       </div>
 
@@ -132,6 +132,10 @@ export default function ProfilePage() {
                 
                 <div className="space-y-1.5">
                   <h3 className="font-semibold text-2xl tracking-tight">{displayName}</h3>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1.5">
+                    <Mail className="w-4 h-4" />
+                    <span>{user.email}</span>
+                  </p>
                   <div className="flex items-center gap-2">
                     <p className="text-sm text-muted-foreground flex items-center gap-1.5">
                       <User2 className="w-4 h-4" /> 
@@ -166,26 +170,7 @@ export default function ProfilePage() {
                   </p>
                   <p className="text-base font-medium">{joinedDate}</p>
                 </div>
-                
-                <Separator className="opacity-50" />
-                
-                <div className="space-y-1 group">
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2 group-hover:text-foreground transition-colors">
-                    <Monitor className="w-4 h-4 text-primary/50 group-hover:text-primary transition-colors" /> Theme Preference
-                  </p>
-                  <p className="text-base font-medium capitalize">{user.themePreference || "system"}</p>
-                </div>
 
-                <Separator className="opacity-50" />
-
-                <div className="space-y-1 group">
-                  <p className="text-sm font-medium text-muted-foreground flex items-center gap-2 group-hover:text-foreground transition-colors">
-                    <CheckCircle2 className="w-4 h-4 text-primary/50 group-hover:text-primary transition-colors" /> Onboarding Status
-                  </p>
-                  <p className="text-base font-medium">
-                    {user.onboardingCompleted ? "Completed" : "Pending"}
-                  </p>
-                </div>
               </CardContent>
             </Card>
           </motion.div>
