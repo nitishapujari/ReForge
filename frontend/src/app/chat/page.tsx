@@ -435,7 +435,16 @@ function ChatContent() {
 
                 try {
                   const data = JSON.parse(dataStr)
-                  if (data.type === "token") {
+                  if (data.type === "session_created") {
+                    if (!sessionId && data.session_id) {
+                      currentSessionId = data.session_id
+                      setSessionId(data.session_id)
+                      const newUrl = new URL(window.location.href)
+                      newUrl.searchParams.set("session", data.session_id)
+                      window.history.replaceState({}, "", newUrl)
+                      window.dispatchEvent(new Event("session-created"))
+                    }
+                  } else if (data.type === "token") {
                     currentContent += data.content
                     setMessages((prev) =>
                       prev.map((msg) =>

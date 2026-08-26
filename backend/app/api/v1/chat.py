@@ -302,6 +302,7 @@ async def chat_stream(
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
+        yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
         if intent != Intent.KNOWLEDGE_QUERY:
             logger.info("Conversational intent (stream) %s detected, bypassing graph", intent.name)
             
