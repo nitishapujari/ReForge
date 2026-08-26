@@ -115,7 +115,7 @@ export default function SystemConfigurationPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="relative z-10">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-muted/40 p-4 rounded-xl border border-primary/10 hover:border-primary/30 transition-colors">
                     <p className="text-xs text-muted-foreground mb-1.5 uppercase font-semibold flex items-center gap-1.5">
                       <Server className="w-3.5 h-3.5" /> Provider
@@ -133,6 +133,12 @@ export default function SystemConfigurationPage() {
                       <Database className="w-3.5 h-3.5" /> Vector Database
                     </p>
                     <p className="font-semibold text-lg">{loading ? "..." : (healthInfo?.vectorDb || "N/A")}</p>
+                  </div>
+                  <div className="bg-muted/40 p-4 rounded-xl border border-primary/10 hover:border-primary/30 transition-colors">
+                    <p className="text-xs text-muted-foreground mb-1.5 uppercase font-semibold flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5" /> Database
+                    </p>
+                    <p className="font-semibold text-lg">{loading ? "..." : (healthInfo?.database || "Unknown")}</p>
                   </div>
                 </div>
               </CardContent>
