@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
+import { useSession } from "next-auth/react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Send, Bot, User, RefreshCw, AlertTriangle, FileText, CheckCircle2, Paperclip, Loader2, Copy, ThumbsUp, ThumbsDown, Check, ChevronDown, Search, GitBranch, Scale, X, Hash, Square, ArrowDown, Activity } from "lucide-react"
@@ -40,6 +41,7 @@ type Message = {
 
 function ChatContent() {
   const router = useRouter()
+  const { data: session } = useSession()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [isGenerating, setIsGenerating] = useState(false)
@@ -305,9 +307,18 @@ function ChatContent() {
     formData.append("file", file)
 
     try {
-      const response = await fetch("/api/v1/documents/upload", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      const requestUrl = backendUrl ? `${backendUrl.replace(/\/+$/, '')}/api/v1/documents/upload` : "/api/v1/documents/upload"
+      
+      const headers: HeadersInit = {}
+      if ((session as any)?.accessToken) {
+        headers["Authorization"] = `Bearer ${(session as any).accessToken}`
+      }
+
+      const response = await fetch(requestUrl, {
         method: "POST",
-        body: formData
+        body: formData,
+        headers
       })
 
       if (response.ok) {
