@@ -363,7 +363,8 @@ async def chat_stream(
                         "verification_status": "NONE",
                         "grounded": None,
                         "confidence": None,
-                    }
+                    },
+                    message_id=request.regenerate_message_id,
                 )
                 await db.commit()
                 
@@ -450,7 +451,8 @@ async def chat_stream(
                             "grounded": False,
                             "confidence": 0.0,
                             "attempts": 1,
-                        }
+                        },
+                        message_id=request.regenerate_message_id,
                     )
                     await db.commit()
                     break
@@ -503,7 +505,8 @@ async def chat_stream(
                             "grounded": grounded,
                             "confidence": confidence,
                             "attempts": attempts,
-                        }
+                        },
+                        message_id=request.regenerate_message_id,
                     )
                     
                     # Flush and commit the message to DB immediately
@@ -542,6 +545,26 @@ async def chat_stream(
             # Client disconnected
             logger.info("Client disconnected from chat stream")
             task.cancel()
+            
+            if request.regenerate_message_id and response_text:
+                await chat_history.add_message(
+                    db=db,
+                    session_id=session_id,
+                    role="assistant",
+                    content=response_text,
+                    trace_data=None,
+                    metadata={
+                        "sources": [],
+                        "response_type": "GROUNDED",
+                        "verification_status": "VERIFIED",
+                        "grounded": False,
+                        "confidence": 0.0,
+                        "attempts": 1,
+                    },
+                    message_id=request.regenerate_message_id,
+                )
+                await db.commit()
+                
             raise
         finally:
             # Explicitly close the db session to prevent SAWarning during TestClient teardown

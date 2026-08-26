@@ -121,6 +121,7 @@ async def add_message(
     content: str,
     trace_data: list[dict] | None = None,
     metadata: dict | None = None,
+    message_id: str | None = None,
 ) -> ChatMessage:
     """
     Add a new message to a session.
@@ -132,17 +133,22 @@ async def add_message(
         content: The message text.
         trace_data: Optional execution trace JSON.
         metadata: Optional metadata (e.g. sources).
+        message_id: Optional UUID to use for the message instead of generating a new one.
 
     Returns:
         The newly created ChatMessage.
     """
-    message = ChatMessage(
-        session_id=session_id,
-        role=role,
-        content=content,
-        trace_data=trace_data,
-        message_metadata=metadata,
-    )
+    kwargs = {
+        "session_id": session_id,
+        "role": role,
+        "content": content,
+        "trace_data": trace_data,
+        "message_metadata": metadata,
+    }
+    if message_id:
+        kwargs["id"] = message_id
+        
+    message = ChatMessage(**kwargs)
     db.add(message)
     await db.flush()
 
