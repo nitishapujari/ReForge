@@ -14,6 +14,8 @@ export function AppLayoutShell({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     if (status === "unauthenticated" && pathname !== "/login") {
       router.push("/login");
+    } else if (status === "authenticated" && pathname === "/login") {
+      router.push("/");
     }
   }, [status, pathname, router]);
 
