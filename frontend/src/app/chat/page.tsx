@@ -1154,7 +1154,12 @@ function ChatContent() {
                   maxRows={5}
                 />
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-0" align="start" sideOffset={10}>
+              <PopoverContent 
+                className="w-80 p-0" 
+                align="start" 
+                sideOffset={10}
+                onCloseAutoFocus={(e) => e.preventDefault()}
+              >
                 <Command>
                   <CommandList>
                     <CommandEmpty>No documents found.</CommandEmpty>
