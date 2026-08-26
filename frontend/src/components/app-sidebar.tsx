@@ -66,7 +66,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const activeSessionId = searchParams.get('session')
   const { user } = useUser()
   
-  const displayEmail = user?.id || "No email"
+  const displayEmail = user?.email || "No email"
   const displayName = user?.fullName || "User"
   const displayInitials = user?.avatarInitials || "U"
   const [chatSessions, setChatSessions] = React.useState<any[]>([])
@@ -265,6 +265,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-semibold">{displayName}</span>
+                  <span className="truncate text-xs">{displayEmail}</span>
                 </div>
                 <ChevronsUpDown className="ml-auto size-4" />
               </DropdownMenuTrigger>
@@ -282,6 +283,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       </Avatar>
                       <div className="grid flex-1 text-left text-sm leading-tight">
                         <span className="truncate font-semibold">{displayName}</span>
+                        <span className="truncate text-xs">{displayEmail}</span>
                       </div>
                     </div>
                   </DropdownMenuLabel>
