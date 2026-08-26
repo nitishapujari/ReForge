@@ -404,7 +404,7 @@ function PersonalizedDashboard() {
         <h2 className="text-2xl font-bold tracking-tight mb-6 flex items-center gap-2">
           <Activity className="w-6 h-6 text-primary" /> System & Activity
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
             <Card className="bg-card/40 backdrop-blur-md border-primary/10 shadow-lg hover:border-primary/30 hover:shadow-xl transition-all duration-300 h-full">
               <CardContent className="p-6">
@@ -422,20 +422,6 @@ function PersonalizedDashboard() {
                 <CardTitle className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-foreground to-foreground/70">
                   {loading ? "..." : <AnimatedNumber value={sessions.length} />}
                 </CardTitle>
-              </CardContent>
-            </Card>
-          </motion.div>
-          <motion.div whileHover={prefersReducedMotion ? {} : { y: -4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-            <Card className="bg-card/40 backdrop-blur-md border-primary/30 bg-primary/5 shadow-[0_0_20px_rgba(var(--primary),0.1)] hover:border-primary/50 hover:shadow-[0_0_30px_rgba(var(--primary),0.2)] transition-all duration-300 relative overflow-hidden h-full group">
-              <div className="absolute top-0 right-0 w-24 h-24 bg-primary/20 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none transition-opacity duration-500 group-hover:opacity-100 opacity-70" />
-              <CardContent className="p-6 relative z-10">
-                <CardDescription className="text-primary font-medium flex items-center gap-1.5 mb-2">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Grounded Accuracy
-                </CardDescription>
-                <CardTitle className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-br from-primary to-primary/60">
-                  {loading ? "..." : <span><AnimatedNumber value={99} />%</span>}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground mt-2 font-medium">Self-healing pipeline active</p>
               </CardContent>
             </Card>
           </motion.div>
