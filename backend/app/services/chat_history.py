@@ -161,8 +161,13 @@ async def add_message(
     return message
 
 
-async def delete_message(db: AsyncSession, message_id: str) -> bool:
-    stmt = select(ChatMessage).where(ChatMessage.id == message_id)
+async def delete_message(db: AsyncSession, message_id: str, user_id: str) -> bool:
+    stmt = (
+        select(ChatMessage)
+        .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+        .where(ChatMessage.id == message_id)
+        .where(ChatSession.user_id == user_id)
+    )
     result = await db.execute(stmt)
     msg = result.scalar_one_or_none()
     if msg:

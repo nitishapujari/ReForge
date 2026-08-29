@@ -283,7 +283,7 @@ async def chat_stream(
     # Save the user message immediately, unless regenerating
     exclude_id = None
     if request.regenerate_message_id:
-        await chat_history.delete_message(db, request.regenerate_message_id)
+        await chat_history.delete_message(db, request.regenerate_message_id, current_user.id)
     else:
         new_msg = await chat_history.add_message(
             db=db,
