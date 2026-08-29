@@ -101,6 +101,17 @@ async def run_ingestion_task(
             async with factory() as db:
                 doc = await db.get(Document, document_id)
                 if doc:
+                    if doc.is_deleted:
+                        logger.warning(
+                            "[Ingestion Aborted] Document %s deleted during processing. Cleaning up chunks.",
+                            document_id,
+                        )
+                        await asyncio.to_thread(
+                            vectorstore.delete_by_document_id,
+                            document_id,
+                        )
+                        return
+
                     doc.status = "completed"
                     doc.chunk_count = len(chunk_ids)
                     doc.error_message = None
