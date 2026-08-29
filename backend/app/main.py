@@ -107,6 +107,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                     await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(36)"))
                 except Exception as e:
                     logger.warning("Schema migration error (might be already applied): %s", e)
+                    
+        # 1.1 Apply Idempotent Indexes
+        try:
+            async with db_mod._engine.begin() as conn:
+                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filename ON documents(user_id, filename) WHERE is_deleted = 0"))
+                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filehash ON documents(user_id, file_hash) WHERE is_deleted = 0 AND file_hash IS NOT NULL"))
+        except Exception as e:
+            logger.critical(
+                "FATAL: Failed to create unique indexes. "
+                "This usually means your database already contains duplicate "
+                "active documents. You must manually clean up duplicates before "
+                "starting the application to guarantee data integrity. Error: %s",
+                e,
+            )
+            raise SystemExit(1) from e
 
         # 2. Create Default Admin User
         admin_email = "admin@reforge.local"

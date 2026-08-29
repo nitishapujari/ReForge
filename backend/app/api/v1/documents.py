@@ -214,10 +214,35 @@ async def upload_document(
             existing_document_id=existing_doc.id
         )
 
+    from sqlalchemy.exc import IntegrityError
+    
     # Create new document record in SQLite
     new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id)
     db.add(new_doc)
-    await db.commit()
+    
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        # Concurrency collision occurred, another identical upload just committed
+        result = await db.execute(stmt)
+        existing_docs = result.scalars().all()
+        if existing_docs:
+            existing_doc = existing_docs[0]
+            is_exact = existing_doc.file_hash == file_hash
+            message = "This document is already in the knowledge base." if is_exact else "A document with this filename already exists, but the content is different. Do you want to replace it?"
+            logger.info("Duplicate document upload prevented via IntegrityError recovery: %s", file.filename)
+            return DocumentUploadResponse(
+                document_id=existing_doc.id,
+                filename=existing_doc.filename,
+                status="duplicate",
+                message=message,
+                duplicate=True,
+                existing_document_id=existing_doc.id
+            )
+        else:
+            logger.error("IntegrityError during upload for '%s', but duplicate not found.", file.filename)
+            raise HTTPException(status_code=500, detail="Database integrity error during upload.")
 
     # Process document in the background detached from request lifecycle
     task = asyncio.create_task(
