@@ -280,9 +280,34 @@ async def replace_document(
     _validate_upload(file.filename, file_content)
     file_hash = hashlib.sha256(file_content).hexdigest()
 
-    doc.status = "processing"
-    doc.filename = file.filename
-    doc.file_hash = file_hash
+    from sqlalchemy import update
+    from datetime import datetime, timezone
+
+    # Atomically reserve the document for replacement
+    stmt = (
+        update(Document)
+        .where(
+            (Document.id == document_id) &
+            (Document.user_id == current_user.id) &
+            (Document.is_deleted == False) &
+            (Document.status != "processing")
+        )
+        .values(
+            status="processing",
+            filename=file.filename,
+            file_hash=file_hash,
+            updated_at=datetime.now(timezone.utc)
+        )
+    )
+    result = await db.execute(stmt)
+    
+    if result.rowcount == 0:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document is currently being processed. Please wait for ingestion to finish before replacing.",
+        )
+
     await db.commit()
 
     # Process document in the background detached from request lifecycle
