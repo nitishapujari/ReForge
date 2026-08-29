@@ -356,7 +356,15 @@ async def delete_document(
     db: AsyncSession = Depends(get_db_session)
 ) -> dict:
     """Soft Delete a document and remove all its chunks from the vector store."""
-    # First delete from vector store
+    # First check existence and ownership from SQLite
+    doc = await db.get(Document, document_id)
+    if not doc or doc.user_id != current_user.id or doc.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document {document_id} not found.",
+        )
+
+    # Then delete from vector store
     deleted_chunks = 0
     try:
         deleted_chunks = await asyncio.to_thread(vectorstore.delete_by_document_id, document_id)
@@ -364,12 +372,6 @@ async def delete_document(
         logger.warning(f"Vector store delete failed or missed: {e}")
         
     # Then Soft delete from SQLite
-    doc = await db.get(Document, document_id)
-    if not doc or doc.user_id != current_user.id or doc.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document {document_id} not found.",
-        )
         
     doc.is_deleted = True
     doc.deleted_at = datetime.now(timezone.utc)
