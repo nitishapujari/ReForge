@@ -270,6 +270,12 @@ async def replace_document(
             detail=f"Document {document_id} not found.",
         )
 
+    if doc.status == "processing":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document is currently being processed. Please wait for ingestion to finish before replacing.",
+        )
+
     file_content = await file.read()
     _validate_upload(file.filename, file_content)
     file_hash = hashlib.sha256(file_content).hexdigest()
