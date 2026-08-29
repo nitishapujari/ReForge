@@ -50,6 +50,10 @@ class ChatRequest(BaseModel):
         default=None,
         description="Optional list of specific document IDs to restrict retrieval to.",
     )
+    assistant_message_id: str | None = Field(
+        default=None,
+        description="Optional explicit UUID for the new assistant message (prevents UUID desync).",
+    )
 
 
 class ChunkPreview(BaseModel):

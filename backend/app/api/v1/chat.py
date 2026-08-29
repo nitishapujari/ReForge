@@ -364,7 +364,7 @@ async def chat_stream(
                         "grounded": None,
                         "confidence": None,
                     },
-                    message_id=request.regenerate_message_id,
+                    message_id=request.regenerate_message_id or request.assistant_message_id,
                 )
                 await db.commit()
                 
@@ -452,7 +452,7 @@ async def chat_stream(
                             "confidence": 0.0,
                             "attempts": 1,
                         },
-                        message_id=request.regenerate_message_id,
+                        message_id=request.regenerate_message_id or request.assistant_message_id,
                     )
                     await db.commit()
                     break
@@ -506,7 +506,7 @@ async def chat_stream(
                             "confidence": confidence,
                             "attempts": attempts,
                         },
-                        message_id=request.regenerate_message_id,
+                        message_id=request.regenerate_message_id or request.assistant_message_id,
                     )
                     
                     # Flush and commit the message to DB immediately
@@ -546,7 +546,7 @@ async def chat_stream(
             logger.info("Client disconnected from chat stream")
             task.cancel()
             
-            if request.regenerate_message_id and response_text:
+            if response_text:
                 await chat_history.add_message(
                     db=db,
                     session_id=session_id,
@@ -561,7 +561,7 @@ async def chat_stream(
                         "confidence": 0.0,
                         "attempts": 1,
                     },
-                    message_id=request.regenerate_message_id,
+                    message_id=request.regenerate_message_id or request.assistant_message_id,
                 )
                 await db.commit()
                 

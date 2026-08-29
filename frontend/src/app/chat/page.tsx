@@ -406,7 +406,8 @@ function ChatContent() {
         body: JSON.stringify({
           question: userMessage.content,
           ...(sessionId ? { session_id: sessionId } : {}),
-          ...(selectedDocs.length > 0 ? { document_ids: selectedDocs.map(d => d.document_id) } : {})
+          ...(selectedDocs.length > 0 ? { document_ids: selectedDocs.map(d => d.document_id) } : {}),
+          assistant_message_id: assistantMessageId
         }),
         signal: abortController.signal
       })
