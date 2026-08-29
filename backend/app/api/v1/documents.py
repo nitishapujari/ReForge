@@ -386,7 +386,11 @@ async def delete_document(
     try:
         deleted_chunks = await asyncio.to_thread(vectorstore.delete_by_document_id, document_id)
     except Exception as e:
-        logger.warning(f"Vector store delete failed or missed: {e}")
+        logger.error(f"Failed to delete vectors for document {document_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to delete document from the vector store. Please try again later.",
+        )
         
     # Then Soft delete from SQLite
         
