@@ -302,12 +302,15 @@ async def chat_stream(
     intent = await conversation_router.classify(request.question, chat_history_data, request.document_ids)
 
     async def event_generator():
+        message_committed = False
         yield f"data: {json.dumps({'type': 'session_created', 'session_id': session_id})}\n\n"
         if intent != Intent.KNOWLEDGE_QUERY:
             logger.info("Conversational intent (stream) %s detected, bypassing graph", intent.name)
             
             loop = asyncio.get_running_loop()
             q = asyncio.Queue()
+            import threading
+            cancel_event = threading.Event()
             
             def run_chat_in_thread(history_data: list[dict]):
                 try:
@@ -326,6 +329,8 @@ async def chat_stream(
                         system_instruction=CONVERSATION_SYSTEM_PROMPT,
                         on_retry=handle_retry
                     ):
+                        if cancel_event.is_set():
+                            break
                         response_text += chunk
                         loop.call_soon_threadsafe(q.put_nowait, {"type": "token", "content": chunk})
                     
@@ -350,7 +355,8 @@ async def chat_stream(
                     elif item["type"] == "done":
                         response_text = item.get("result", "")
                         break
-            finally:
+                        
+                # Normal exit path
                 await chat_history.add_message(
                     db=db,
                     session_id=session_id,
@@ -367,6 +373,7 @@ async def chat_stream(
                     message_id=request.regenerate_message_id or request.assistant_message_id,
                 )
                 await db.commit()
+                message_committed = True
                 
                 final_event = {
                     "type": "done",
@@ -380,6 +387,32 @@ async def chat_stream(
                     "trace_available": False
                 }
                 yield f"data: {json.dumps(final_event)}\n\n"
+                
+            except asyncio.CancelledError:
+                cancel_event.set()
+                logger.info("Client disconnected from conversational chat stream")
+                task.cancel()
+                
+                if response_text and not message_committed:
+                    await chat_history.add_message(
+                        db=db,
+                        session_id=session_id,
+                        role="assistant",
+                        content=response_text,
+                        trace_data=[],
+                        metadata={
+                            "sources": [],
+                            "response_type": "CONVERSATION",
+                            "verification_status": "NONE",
+                            "grounded": None,
+                            "confidence": None,
+                        },
+                        message_id=request.regenerate_message_id or request.assistant_message_id,
+                    )
+                    await db.commit()
+                raise
+            finally:
+                # Explicitly close the db session to prevent SAWarning during TestClient teardown
                 await db.close()
             return
             
@@ -517,6 +550,7 @@ async def chat_stream(
                     
                     # Flush and commit the message to DB immediately
                     await db.commit()
+                    message_committed = True
 
                     logger.info(
                         "Chat stream complete: session=%s, grounded=%s, confidence=%.4f",
@@ -553,7 +587,7 @@ async def chat_stream(
             logger.info("Client disconnected from chat stream")
             task.cancel()
             
-            if response_text:
+            if response_text and not message_committed:
                 await chat_history.add_message(
                     db=db,
                     session_id=session_id,
@@ -590,6 +624,7 @@ async def chat_stream(
 
 @router.get("/initial_suggestions")
 async def get_initial_suggestions(
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session)
 ):
     """
@@ -610,7 +645,16 @@ async def get_initial_suggestions(
     
     try:
         # Fetch up to 3 recently processed documents
-        stmt = select(Document).where(Document.status == "completed").order_by(Document.created_at.desc()).limit(3)
+        stmt = (
+            select(Document)
+            .where(
+                (Document.user_id == current_user.id) & 
+                (Document.status == "completed") & 
+                (Document.is_deleted == False)
+            )
+            .order_by(Document.created_at.desc())
+            .limit(3)
+        )
         result = await db.execute(stmt)
         docs = result.scalars().all()
         
@@ -662,12 +706,21 @@ Return ONLY a JSON array of exactly 4 strings. Do not use markdown blocks.
 @router.get("/{session_id}/suggestions")
 async def get_chat_suggestions(
     session_id: str,
+    current_user: CurrentUser,
     db: AsyncSession = Depends(get_db_session)
 ):
     """
     Generate 3 smart follow-up questions based on the chat history.
     """
     from app.services import llm
+    
+    # Verify session ownership
+    session = await chat_history.get_session(db, session_id, current_user.id)
+    if session is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Session {session_id} not found."
+        )
     
     chat_history_data = await chat_history.get_recent_messages(db, session_id, limit=4)
     if not chat_history_data or len(chat_history_data) == 0:
