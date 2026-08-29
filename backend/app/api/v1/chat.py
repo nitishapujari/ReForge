@@ -385,8 +385,12 @@ async def chat_stream(
             
         loop = asyncio.get_running_loop()
         q = asyncio.Queue()
+        import threading
+        cancel_event = threading.Event()
 
         def stream_callback(event: dict):
+            if cancel_event.is_set():
+                raise InterruptedError("Client disconnected")
             # Fire-and-forget push to the queue from the synchronous thread
             loop.call_soon_threadsafe(
                 q.put_nowait,
@@ -407,6 +411,8 @@ async def chat_stream(
                     config={"configurable": {"stream_callback": stream_callback}}
                 )
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "done", "result": result})
+            except InterruptedError:
+                return
             except Exception as e:
                 import traceback
                 with open("error.log", "w") as f:
@@ -542,6 +548,7 @@ async def chat_stream(
                     yield f"data: {json.dumps(item)}\n\n"
                     
         except asyncio.CancelledError:
+            cancel_event.set()
             # Client disconnected
             logger.info("Client disconnected from chat stream")
             task.cancel()
