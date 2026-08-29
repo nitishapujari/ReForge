@@ -235,6 +235,11 @@ function ChatContent() {
   const sessionParam = searchParams.get('session')
 
   useEffect(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+
     if (sessionParam) {
       if (sessionId === sessionParam && messages.length > 0) return;
       
@@ -279,6 +284,11 @@ function ChatContent() {
 
   useEffect(() => {
     const handleNewChat = () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+
       setSessionId("")
       setMessages([])
       setIsLoadingSuggestions(true)
