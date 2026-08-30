@@ -375,9 +375,18 @@ export default function UploadPage() {
     if (task.document_id && !["indexed successfully", "error", "canceled"].includes(task.status)) {
       // It's processing in the backend. Call DELETE to stop it.
       try {
-        await fetch(`/api/v1/documents/${task.document_id}`, { method: "DELETE" })
+        const response = await fetch(`/api/v1/documents/${task.document_id}`, { method: "DELETE" })
+        if (!response.ok) {
+          if (response.status === 409) {
+            updateTask(taskId, { errorMsg: "Processing cannot be interrupted. Please wait for completion.", duplicateData: undefined })
+            return
+          }
+          throw new Error("Failed to cancel document on backend")
+        }
       } catch (err) {
         console.error("Failed to cancel on backend", err)
+        updateTask(taskId, { errorMsg: "Failed to cancel. The document may still be processing.", duplicateData: undefined })
+        return
       }
       updateTask(taskId, { status: "canceled", progress: 0 })
       return
