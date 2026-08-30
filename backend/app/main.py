@@ -102,7 +102,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             async with db_mod._engine.begin() as conn:
                 try:
                     await conn.execute(text("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)"))
-                    await conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT 0 NOT NULL"))
+                    await conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"))
                     await conn.execute(text("ALTER TABLE documents ADD COLUMN deleted_at DATETIME"))
                     await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(36)"))
                 except Exception as e:
@@ -111,8 +111,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # 1.1 Apply Idempotent Indexes
         try:
             async with db_mod._engine.begin() as conn:
-                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filename ON documents(user_id, filename) WHERE is_deleted = 0"))
-                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filehash ON documents(user_id, file_hash) WHERE is_deleted = 0 AND file_hash IS NOT NULL"))
+                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filename ON documents(user_id, filename) WHERE is_deleted = FALSE"))
+                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filehash ON documents(user_id, file_hash) WHERE is_deleted = FALSE AND file_hash IS NOT NULL"))
         except Exception as e:
             logger.critical(
                 "FATAL: Failed to create unique indexes. "
