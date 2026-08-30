@@ -24,6 +24,7 @@ from fastapi import (
 from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser
 from app.constants import ALLOWED_EXTENSIONS
@@ -214,8 +215,6 @@ async def upload_document(
             existing_document_id=existing_doc.id
         )
 
-    from sqlalchemy.exc import IntegrityError
-    
     # Create new document record in SQLite
     new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id)
     db.add(new_doc)
@@ -324,16 +323,23 @@ async def replace_document(
             updated_at=datetime.now(timezone.utc)
         )
     )
-    result = await db.execute(stmt)
-    
-    if result.rowcount == 0:
+    try:
+        result = await db.execute(stmt)
+        
+        if result.rowcount == 0:
+            await db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Document is currently being processed. Please wait for ingestion to finish before replacing.",
+            )
+
+        await db.commit()
+    except IntegrityError:
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Document is currently being processed. Please wait for ingestion to finish before replacing.",
+            detail="A document with this filename or content already exists."
         )
-
-    await db.commit()
 
     # Process document in the background detached from request lifecycle
     task = asyncio.create_task(
@@ -408,7 +414,14 @@ async def rename_document(
         raise HTTPException(status_code=404, detail="Document not found.")
     
     doc.filename = request.filename
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A document with this filename already exists."
+        )
     return {"status": "success", "filename": doc.filename}
 
 @router.delete(
