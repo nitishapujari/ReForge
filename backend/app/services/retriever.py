@@ -7,11 +7,38 @@ Supports configurable top_k for adaptive retrieval depth.
 """
 
 from app.constants import DEFAULT_TOP_K, RELEVANCE_THRESHOLD
+from sqlalchemy import select
+from app.models.database import get_session_factory
+from app.models.document import Document
+import asyncio
+
 from app.services.vectorstore import get_collection
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+
+
+async def _get_active_document_ids(user_id: str, requested_ids: list[str] | None) -> list[str]:
+    factory = get_session_factory()
+    async with factory() as db:
+        stmt = select(Document.id).where(
+            Document.user_id == user_id,
+            Document.is_deleted == False
+        )
+        if requested_ids:
+            stmt = stmt.where(Document.id.in_(requested_ids))
+        result = await db.execute(stmt)
+        return list(result.scalars().all())
+
+def get_active_document_ids_sync(user_id: str, requested_ids: list[str] | None) -> list[str]:
+    try:
+        loop = asyncio.get_running_loop()
+        import nest_asyncio
+        nest_asyncio.apply()
+        return loop.run_until_complete(_get_active_document_ids(user_id, requested_ids))
+    except RuntimeError:
+        return asyncio.run(_get_active_document_ids(user_id, requested_ids))
 
 def retrieve(
     query: str,
@@ -49,27 +76,35 @@ def retrieve(
             "similarity_scores": [],
         }
 
+    # Resolve active documents from SQLite securely
+    active_ids = get_active_document_ids_sync(user_id, document_ids)
+    if not active_ids:
+        logger.info("Retrieval aborted: No active documents found for user (requested_ids=%s)", document_ids)
+        return {
+            "documents": [],
+            "metadatas": [],
+            "distances": [],
+            "similarity_scores": [],
+        }
+
     # Clamp top_k to available documents
     available = collection.count()
     effective_k = min(top_k, available)
 
-    if document_ids:
-        if len(document_ids) == 1:
-            where_filter = {
-                "$and": [
-                    {"user_id": user_id},
-                    {"document_id": document_ids[0]}
-                ]
-            }
-        else:
-            where_filter = {
-                "$and": [
-                    {"user_id": user_id},
-                    {"document_id": {"$in": document_ids}}
-                ]
-            }
+    if len(active_ids) == 1:
+        where_filter = {
+            "$and": [
+                {"user_id": user_id},
+                {"document_id": active_ids[0]}
+            ]
+        }
     else:
-        where_filter: dict = {"user_id": user_id}
+        where_filter = {
+            "$and": [
+                {"user_id": user_id},
+                {"document_id": {"$in": active_ids}}
+            ]
+        }
 
     results = collection.query(
         query_texts=[query],
@@ -139,18 +174,28 @@ def retrieve_all(
             "similarity_scores": [],
         }
         
-    if len(document_ids) == 1:
+    active_ids = get_active_document_ids_sync(user_id, document_ids)
+    if not active_ids:
+        logger.info("RetrieveAll aborted: No active documents found for user (requested_ids=%s)", document_ids)
+        return {
+            "documents": [],
+            "metadatas": [],
+            "distances": [],
+            "similarity_scores": [],
+        }
+        
+    if len(active_ids) == 1:
         where_filter = {
             "$and": [
                 {"user_id": user_id},
-                {"document_id": document_ids[0]}
+                {"document_id": active_ids[0]}
             ]
         }
     else:
         where_filter = {
             "$and": [
                 {"user_id": user_id},
-                {"document_id": {"$in": document_ids}}
+                {"document_id": {"$in": active_ids}}
             ]
         }
     

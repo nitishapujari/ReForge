@@ -423,27 +423,59 @@ async def delete_document(
     db: AsyncSession = Depends(get_db_session)
 ) -> dict:
     """Soft Delete a document and remove all its chunks from the vector store."""
-    # First check existence and ownership from SQLite
-    doc = await db.get(Document, document_id)
-    if not doc or doc.user_id != current_user.id or doc.is_deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Document {document_id} not found.",
+    from sqlalchemy import update
+    
+    # Atomically reserve the document to prevent concurrent ingestion races
+    stmt = (
+        update(Document)
+        .where(
+            (Document.id == document_id) &
+            (Document.user_id == current_user.id) &
+            (Document.is_deleted == False) &
+            (Document.status != "processing")
         )
+        .values(
+            status="processing",
+            updated_at=datetime.now(timezone.utc)
+        )
+    )
+    result = await db.execute(stmt)
+    
+    if result.rowcount == 0:
+        await db.rollback()
+        # Determine why the reservation failed
+        doc = await db.get(Document, document_id)
+        if not doc or doc.user_id != current_user.id or doc.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document {document_id} not found.",
+            )
+        # If it exists but rowcount == 0, it must be processing
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document is currently being processed. Please wait for ingestion to finish before deleting.",
+        )
+        
+    await db.commit()
 
-    # Then delete from vector store
+    # Document is now exclusively reserved. Delete from vector store.
     deleted_chunks = 0
     try:
         deleted_chunks = await asyncio.to_thread(vectorstore.delete_by_document_id, document_id)
     except Exception as e:
         logger.error(f"Failed to delete vectors for document {document_id}: {e}")
+        # Rollback the reservation on vector store failure
+        doc = await db.get(Document, document_id)
+        if doc:
+            doc.status = "completed"
+            await db.commit()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Failed to delete document from the vector store. Please try again later.",
         )
         
-    # Then Soft delete from SQLite
-        
+    # Finally, soft delete from SQLite
+    doc = await db.get(Document, document_id)
     doc.is_deleted = True
     doc.deleted_at = datetime.now(timezone.utc)
     doc.status = "deleted"
