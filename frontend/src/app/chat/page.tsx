@@ -448,7 +448,6 @@ function ChatContent() {
                   const data = JSON.parse(dataStr)
                   if (data.type === "session_created") {
                     if (!sessionId && data.session_id) {
-                      currentSessionId = data.session_id
                       setSessionId(data.session_id)
                       const newUrl = new URL(window.location.href)
                       newUrl.searchParams.set("session", data.session_id)
@@ -1173,7 +1172,7 @@ function ChatContent() {
 
             <Popover
               open={mentionOpen}
-              onOpenChange={(open) => {
+              onOpenChange={(open: boolean) => {
                 if (!open) {
                   setMentionOpen(false)
                 }
@@ -1194,7 +1193,6 @@ function ChatContent() {
                 className="w-80 p-0" 
                 align="start" 
                 sideOffset={10}
-                onCloseAutoFocus={(e) => e.preventDefault()}
               >
                 <Command>
                   <CommandList>
