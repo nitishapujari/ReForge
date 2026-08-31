@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: reforge-api
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: CHROMA_MODE
+        value: persistent
+      - key: CHROMA_PERSIST_DIR
+        value: /var/data/chromadb
+      - key: DATABASE_URL
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+    disk:
+      name: chromadb-data
+      mountPath: /var/data/chromadb
+      sizeGB: 1
