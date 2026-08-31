@@ -102,7 +102,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         if stream_callback:
             logger.info("Using streaming LLM invocation for general knowledge fallback")
             stream_callback({"type": "clear"})
-            chunks = []
+            chunks = [NO_RELEVANT_DOCS_RESPONSE]
+            stream_callback({"type": "token", "content": NO_RELEVANT_DOCS_RESPONSE})
+            
             for chunk in llm.invoke_stream(
                 prompt=user_prompt,
                 system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,
@@ -299,7 +301,9 @@ def generate_node(state: GraphState, config: RunnableConfig | None = None) -> di
         if stream_callback:
             logger.info("Using streaming LLM invocation for general knowledge fallback")
             stream_callback({"type": "clear"})
-            chunks = []
+            chunks = [NO_RELEVANT_DOCS_RESPONSE]
+            stream_callback({"type": "token", "content": NO_RELEVANT_DOCS_RESPONSE})
+            
             for chunk in llm.invoke_stream(
                 prompt=user_prompt,
                 system_instruction=GENERAL_KNOWLEDGE_SYSTEM_PROMPT,

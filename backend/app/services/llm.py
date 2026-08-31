@@ -190,12 +190,18 @@ def _invoke_stream_gemini(
                 if chunk.text:
                     has_yielded = True
                     yield chunk.text
+                if chunk.candidates and chunk.candidates[0].finish_reason:
+                    reason = chunk.candidates[0].finish_reason
+                    if str(reason).endswith("MAX_TOKENS") or reason == "MAX_TOKENS":
+                        raise TimeoutError("LLM response reached maximum token limit.")
             elapsed = time.monotonic() - start_time
             if has_yielded:
                 logger.info("Gemini stream successful: latency=%.2fs, attempt=%d/%d", elapsed, attempt, max_retries)
                 return
             logger.warning("Gemini stream returned empty text (attempt %d/%d)", attempt, max_retries)
             last_error = RuntimeError("Gemini stream returned empty response")
+        except TimeoutError:
+            raise
         except Exception as e:
             elapsed = time.monotonic() - start_time
             last_error = e
@@ -345,12 +351,16 @@ def _invoke_stream_groq(
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                     has_yielded = True
                     yield chunk.choices[0].delta.content
+                if chunk.choices and chunk.choices[0].finish_reason in ("length", "max_tokens"):
+                    raise TimeoutError("LLM response reached maximum token limit.")
             elapsed = time.monotonic() - start_time
             if has_yielded:
                 logger.info("Groq stream successful: latency=%.2fs, attempt=%d/%d", elapsed, attempt, max_retries)
                 return
             logger.warning("Groq stream returned empty text (attempt %d/%d)", attempt, max_retries)
             last_error = RuntimeError("Groq stream returned empty response")
+        except TimeoutError:
+            raise
         except Exception as e:
             elapsed = time.monotonic() - start_time
             last_error = e
