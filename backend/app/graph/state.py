@@ -34,6 +34,7 @@ class GraphState(TypedDict):
     user_id: str
     chat_history: list[dict]
     document_ids: list[str] | None
+    active_document_ids: list[str]
 
     retrieval_query: str | None
     retrieval_intent: str | None

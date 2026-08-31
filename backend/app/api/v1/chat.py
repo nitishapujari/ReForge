@@ -156,10 +156,23 @@ async def chat(
         )
 
     try:
+        from sqlalchemy import select
+        from app.models.document import Document
+        
+        stmt = select(Document.id).where(
+            Document.user_id == current_user.id,
+            Document.is_deleted == False
+        )
+        if request.document_ids:
+            stmt = stmt.where(Document.id.in_(request.document_ids))
+        result = await db.execute(stmt)
+        active_document_ids = list(result.scalars().all())
+
         initial_state = get_initial_state(
             question=request.question,
             session_id=session_id,
             user_id=current_user.id,
+            active_document_ids=active_document_ids,
             chat_history=chat_history_data,
             document_ids=request.document_ids,
         )
@@ -430,12 +443,13 @@ async def chat_stream(
                 event
             )
 
-        def run_graph_in_thread(chat_history_data: list[dict]):
+        def run_graph_in_thread(chat_history_data: list[dict], active_document_ids: list[str]):
             try:
                 initial_state = get_initial_state(
                     question=request.question,
                     session_id=session_id,
                     user_id=current_user.id,
+                    active_document_ids=active_document_ids,
                     chat_history=chat_history_data,
                     document_ids=request.document_ids,
                 )
@@ -455,8 +469,20 @@ async def chat_stream(
                 loop.call_soon_threadsafe(q.put_nowait, {"type": "error", "error": clean_error})
         # Use the already fetched chat history
         rag_history_data = chat_history_data
+        from sqlalchemy import select
+        from app.models.document import Document
+        
+        stmt = select(Document.id).where(
+            Document.user_id == current_user.id,
+            Document.is_deleted == False
+        )
+        if request.document_ids:
+            stmt = stmt.where(Document.id.in_(request.document_ids))
+        result = await db.execute(stmt)
+        active_document_ids = list(result.scalars().all())
+
         # Start the graph execution in a background thread
-        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, rag_history_data))
+        task = asyncio.create_task(asyncio.to_thread(run_graph_in_thread, rag_history_data, active_document_ids))
         
         response_text = ""
         try:

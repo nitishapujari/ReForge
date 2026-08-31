@@ -19,33 +19,12 @@ logger = get_logger(__name__)
 
 
 
-async def _get_active_document_ids(user_id: str, requested_ids: list[str] | None) -> list[str]:
-    factory = get_session_factory()
-    async with factory() as db:
-        stmt = select(Document.id).where(
-            Document.user_id == user_id,
-            Document.is_deleted == False
-        )
-        if requested_ids:
-            stmt = stmt.where(Document.id.in_(requested_ids))
-        result = await db.execute(stmt)
-        return list(result.scalars().all())
-
-def get_active_document_ids_sync(user_id: str, requested_ids: list[str] | None) -> list[str]:
-    try:
-        loop = asyncio.get_running_loop()
-        import nest_asyncio
-        nest_asyncio.apply()
-        return loop.run_until_complete(_get_active_document_ids(user_id, requested_ids))
-    except RuntimeError:
-        return asyncio.run(_get_active_document_ids(user_id, requested_ids))
-
 def retrieve(
     query: str,
     user_id: str,
+    active_document_ids: list[str],
     top_k: int = DEFAULT_TOP_K,
     score_threshold: float = RELEVANCE_THRESHOLD,
-    document_ids: list[str] | None = None,
 ) -> dict:
     """
     Perform semantic search against the vector store.
@@ -77,9 +56,9 @@ def retrieve(
         }
 
     # Resolve active documents from SQLite securely
-    active_ids = get_active_document_ids_sync(user_id, document_ids)
+    active_ids = active_document_ids
     if not active_ids:
-        logger.info("Retrieval aborted: No active documents found for user (requested_ids=%s)", document_ids)
+        logger.info("Retrieval aborted: No active documents found for user")
         return {
             "documents": [],
             "metadatas": [],
@@ -158,7 +137,7 @@ def retrieve(
 
 def retrieve_all(
     user_id: str,
-    document_ids: list[str],
+    active_document_ids: list[str],
 ) -> dict:
     """
     Retrieve all chunks for the specified document(s), preserving chunk order.
@@ -166,7 +145,7 @@ def retrieve_all(
     """
     collection = get_collection()
     
-    if not document_ids:
+    if not active_document_ids:
         return {
             "documents": [],
             "metadatas": [],
@@ -174,9 +153,9 @@ def retrieve_all(
             "similarity_scores": [],
         }
         
-    active_ids = get_active_document_ids_sync(user_id, document_ids)
+    active_ids = active_document_ids
     if not active_ids:
-        logger.info("RetrieveAll aborted: No active documents found for user (requested_ids=%s)", document_ids)
+        logger.info("RetrieveAll aborted: No active documents found for user")
         return {
             "documents": [],
             "metadatas": [],
@@ -216,9 +195,9 @@ def retrieve_all(
     sorted_metadatas = [x[1] for x in combined]
     
     logger.info(
-        "RetrieveAll complete: retrieved %d chunks for document_ids=%s",
+        "RetrieveAll complete: retrieved %d chunks for active_document_ids=%s",
         len(sorted_documents),
-        document_ids
+        active_document_ids
     )
     
     return {

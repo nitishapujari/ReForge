@@ -142,6 +142,7 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
 
     # Classify intent and perform retrieval
     document_ids = state.get("document_ids")
+    active_document_ids = state.get("active_document_ids")
     intent = classify_retrieval_intent(query, document_ids)
     
     if intent == RetrievalIntent.DOCUMENT_OPERATION:
@@ -152,9 +153,9 @@ def retrieve_node(state: GraphState, config: RunnableConfig) -> dict:
             logger.info("Intent %s detected, bypassing semantic search for document_ids=%s", intent.name, document_ids)
             if stream_callback:
                 stream_callback({"type": "status", "message": "📑 Retrieving entire document...", "status": "info"})
-            results = retriever.retrieve_all(user_id=state.get("user_id"), document_ids=document_ids)
+            results = retriever.retrieve_all(user_id=state.get("user_id"), active_document_ids=active_document_ids)
     else:
-        results = retriever.retrieve(query=query, user_id=state.get("user_id"), top_k=top_k, document_ids=document_ids)
+        results = retriever.retrieve(query=query, user_id=state.get("user_id"), active_document_ids=active_document_ids, top_k=top_k)
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
