@@ -37,7 +37,24 @@ type Message = {
   }
 }
 
-
+const getFriendlyErrorMessage = (error: any, status?: number): string => {
+  const msg = error?.message || String(error)
+  const lowerMsg = msg.toLowerCase()
+  
+  if (status === 429 || lowerMsg.includes("quota exceeded") || lowerMsg.includes("rate limit") || lowerMsg.includes("429")) {
+    return "Document processing quota reached. Please try again later."
+  }
+  if (lowerMsg.includes("failed to fetch") || lowerMsg.includes("network error") || lowerMsg.includes("econnrefused")) {
+    return "Unable to connect to the server. Please check your connection and try again."
+  }
+  if (status === 413 || lowerMsg.includes("too large") || lowerMsg.includes("size limit")) {
+    return "The selected file exceeds the maximum allowed size."
+  }
+  if (status === 415 || lowerMsg.includes("unsupported") || lowerMsg.includes("invalid type")) {
+    return "This file type is not supported."
+  }
+  return "Failed to process the document. Please try again."
+}
 
 function ChatContent() {
   const router = useRouter()
@@ -309,6 +326,14 @@ function ChatContent() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isUploading, setIsUploading] = useState(false)
+  const uploadPollIntervalsRef = useRef<Set<NodeJS.Timeout>>(new Set())
+
+  useEffect(() => {
+    return () => {
+      uploadPollIntervalsRef.current.forEach(interval => clearInterval(interval))
+      uploadPollIntervalsRef.current.clear()
+    }
+  }, [])
 
   const handleUploadClick = () => {
     fileInputRef.current?.click()
@@ -319,8 +344,19 @@ function ChatContent() {
     if (!file) return
 
     setIsUploading(true)
+    const uploadMsgId = crypto.randomUUID()
+    setMessages(prev => [...prev, {
+      id: uploadMsgId,
+      role: "assistant",
+      content: "",
+      status: "generating",
+      agentStatuses: [{ message: `Uploading document ${file.name}...`, status: "info" }]
+    }])
+
     const formData = new FormData()
     formData.append("file", file)
+
+    let finalDocumentId = ""
 
     try {
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
@@ -337,28 +373,122 @@ function ChatContent() {
         headers
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedDocs(prev => [...prev, { document_id: data.document_id, filename: file.name }])
-        setAvailableDocs(prev => [...prev, { document_id: data.document_id, filename: file.name }])
-        setMessages(prev => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: `✅ Document **${file.name}** uploaded successfully. It is now being processed and will be available in your documents shortly.`
-          }
-        ])
-      } else {
-        const errorData = await response.json().catch(() => ({}))
-        alert(`Upload failed: ${errorData.detail || response.statusText}`)
+      if (!response.ok) {
+        let detailedError = "Failed to upload document."
+        try {
+          const errJson = await response.json()
+          if (errJson.detail) detailedError = typeof errJson.detail === "string" ? errJson.detail : JSON.stringify(errJson.detail)
+        } catch (e) {}
+        const friendlyMsg = getFriendlyErrorMessage(new Error(detailedError), response.status)
+        setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+          ...m,
+          status: "error",
+          content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
+        } : m))
+        setIsUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        return
       }
+
+      const data = await response.json()
+      
+      if (data.duplicate) {
+        const docId = data.existing_document_id || data.document_id
+        setSelectedDocs(prev => {
+          if (!prev.find(d => d.document_id === docId)) {
+            return [...prev, { document_id: docId, filename: file.name }]
+          }
+          return prev
+        })
+        setAvailableDocs(prev => {
+          if (!prev.find(d => d.document_id === docId)) {
+            return [...prev, { document_id: docId, filename: file.name }]
+          }
+          return prev
+        })
+        setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+          ...m,
+          status: "done",
+          content: `✅ Document **${file.name}** is already uploaded. It has been added to the chat.`
+        } : m))
+        setIsUploading(false)
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        return
+      }
+
+      finalDocumentId = data.document_id
+
+      setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+        ...m,
+        agentStatuses: [
+          ...(m.agentStatuses || []),
+          { message: `Processing document ${file.name}...`, status: "info" }
+        ]
+      } : m))
+
     } catch (err: any) {
-      alert(`Upload failed: ${err.message}`)
-    } finally {
+      const friendlyMsg = getFriendlyErrorMessage(err)
+      setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+        ...m,
+        status: "error",
+        content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
+      } : m))
       setIsUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
+      return
     }
+
+    // Re-enable chat input immediately after successful upload
+    setIsUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+
+    // Polling Phase
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/v1/documents")
+        if (!res.ok) return
+        const docs = await res.json()
+        const doc = docs.find((d: any) => d.document_id === finalDocumentId)
+        
+        if (!doc) return // Wait
+
+        if (doc.status === "completed") {
+          clearInterval(pollInterval)
+          uploadPollIntervalsRef.current.delete(pollInterval)
+          
+          setSelectedDocs(prev => {
+             if (!prev.find(d => d.document_id === finalDocumentId)) {
+                return [...prev, { document_id: finalDocumentId, filename: file.name }]
+             }
+             return prev
+          })
+          setAvailableDocs(prev => {
+             if (!prev.find(d => d.document_id === finalDocumentId)) {
+                return [...prev, { document_id: finalDocumentId, filename: file.name }]
+             }
+             return prev
+          })
+          
+          setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+            ...m,
+            status: "done",
+            content: `✅ Document **${file.name}** uploaded successfully. You can view it in your Documents section and ask questions about it in Chat.`
+          } : m))
+        } else if (doc.status === "failed") {
+          clearInterval(pollInterval)
+          uploadPollIntervalsRef.current.delete(pollInterval)
+          
+          const friendlyMsg = getFriendlyErrorMessage(new Error(doc.error_message || "Backend processing failed."))
+          setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
+            ...m,
+            status: "error",
+            content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
+          } : m))
+        }
+      } catch (e) {}
+    }, 2000)
+    
+    uploadPollIntervalsRef.current.add(pollInterval)
   }
 
   const handleStop = () => {
