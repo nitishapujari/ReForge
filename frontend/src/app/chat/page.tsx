@@ -23,7 +23,7 @@ type Message = {
   role: "user" | "assistant"
   content: string
   attached_documents?: { document_id: string, filename: string }[]
-  status?: "generating" | "done" | "error"
+  status?: "generating" | "done" | "error" | "interrupted"
   agentStatuses?: { message: string, status: string }[]
   metadata?: {
     response_type?: string
@@ -169,7 +169,7 @@ function ChatContent() {
                     ))
                   } else if (data.type === 'error') {
                     setMessages((prev) => prev.map((m) =>
-                      m.id === assistantMessageId ? { ...m, status: "error", content: data.error || "An unexpected error occurred." } : m
+                      m.id === assistantMessageId ? { ...m, status: "error", content: accumulatedAnswer ? accumulatedAnswer + "\n\n*(Error: " + (data.error || "An unexpected error occurred.") + ")*" : (data.error || "An unexpected error occurred.") } : m
                     ))
                     break
                   } else if (data.type === 'done') {
@@ -197,11 +197,11 @@ function ChatContent() {
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, status: "done" } : m))
+        setMessages((prev) => prev.map((m) => m.id === assistantMessageId ? { ...m, status: "interrupted", content: m.content + "\n\n*(Generation interrupted)*" } : m))
       } else {
         console.error("Stream error:", err)
         setMessages((prev) => prev.map((m) =>
-          m.id === assistantMessageId ? { ...m, status: "error", content: "Sorry, an error occurred while generating the response." } : m
+          m.id === assistantMessageId ? { ...m, status: "error", content: accumulatedAnswer ? accumulatedAnswer + "\n\n*(Error: " + (err.message || "An error occurred while generating the response.") + ")*" : "Sorry, an error occurred while generating the response." } : m
         ))
       }
     } finally {
@@ -654,7 +654,7 @@ function ChatContent() {
                     setMessages((prev) =>
                       prev.map((msg) =>
                         msg.id === assistantMessageId
-                          ? { ...msg, status: "error", content: data.error || "An unexpected error occurred." }
+                          ? { ...msg, status: "error", content: currentContent ? currentContent + "\n\n*(Error: " + (data.error || "An unexpected error occurred.") + ")*" : (data.error || "An unexpected error occurred.") }
                           : msg
                       )
                     )
@@ -673,7 +673,7 @@ function ChatContent() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, status: "done", content: msg.content || "_Generation stopped by user._" }
+              ? { ...msg, status: "interrupted", content: msg.content + "\n\n*(Generation interrupted)*" }
               : msg
           )
         )
@@ -682,7 +682,7 @@ function ChatContent() {
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMessageId
-              ? { ...msg, status: "error", content: error.message || "An error occurred." }
+              ? { ...msg, status: "error", content: currentContent ? currentContent + "\n\n*(Error: " + (error.message || "An error occurred.") + ")*" : (error.message || "An error occurred.") }
               : msg
           )
         )
@@ -1146,7 +1146,7 @@ function ChatContent() {
                     )}
 
                     {/* Message Action Bar */}
-                    {message.role === "assistant" && message.status === "done" && (
+                    {message.role === "assistant" && (message.status === "done" || message.status === "interrupted") && (
                       <div className="relative opacity-0 group-hover/message:opacity-100 hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1.5 mt-1 -ml-1 before:absolute before:-inset-y-4 before:-inset-x-2 before:-z-10 before:content-['']">
                         <Button
                           variant="ghost"
