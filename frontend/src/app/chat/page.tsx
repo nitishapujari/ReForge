@@ -111,6 +111,7 @@ function ChatContent() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
+    let accumulatedAnswer = ""
     try {
       const response = await fetch("/api/v1/chat/stream", {
         method: "POST",
@@ -132,7 +133,6 @@ function ChatContent() {
       const decoder = new TextDecoder("utf-8")
       if (!reader) throw new Error("No reader from response body")
 
-      let accumulatedAnswer = ""
       let finalMetadata: any = null
       let buffer = ""
 
@@ -527,6 +527,7 @@ function ChatContent() {
     const abortController = new AbortController()
     abortControllerRef.current = abortController
 
+    let currentContent = ""
     try {
       const response = await fetch("/api/v1/chat/stream", {
         method: "POST",
@@ -553,7 +554,6 @@ function ChatContent() {
       const reader = response.body.getReader()
       const decoder = new TextDecoder("utf-8")
       let done = false
-      let currentContent = ""
       let buffer = ""
 
       while (!done) {
