@@ -60,7 +60,7 @@ const getFriendlyErrorMessage = (error: any, status?: number): string => {
   const lowerMsg = msg.toLowerCase()
   
   if (status === 429 || lowerMsg.includes("quota exceeded") || lowerMsg.includes("rate limit") || lowerMsg.includes("429")) {
-    return "Document processing quota reached. Please try again later."
+    return "Server is currently busy due to high traffic. Please try again later."
   }
   if (lowerMsg.includes("failed to fetch") || lowerMsg.includes("network error") || lowerMsg.includes("econnrefused")) {
     return "Unable to connect to the server. Please check your connection and try again."
