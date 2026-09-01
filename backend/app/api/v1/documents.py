@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser
-from app.constants import ALLOWED_EXTENSIONS
+from app.constants import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 from app.models.database import get_db_session, get_session_factory
 from app.models.document import Document
 from app.models.schemas import DocumentResponse, DocumentUploadResponse
@@ -153,11 +153,11 @@ def _validate_upload(filename: str, content: bytes) -> None:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported file type '{ext}'. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
-    MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
-    if len(content) > MAX_FILE_SIZE:
+    max_file_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(content) > max_file_size_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="File too large. Maximum size is 20MB.",
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB.",
         )
 
 

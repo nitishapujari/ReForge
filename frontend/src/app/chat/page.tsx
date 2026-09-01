@@ -23,7 +23,7 @@ type Message = {
   role: "user" | "assistant"
   content: string
   attached_documents?: { document_id: string, filename: string }[]
-  status?: "generating" | "done" | "error" | "interrupted"
+  status?: "generating" | "done" | "error" | "interrupted" | "upload_error"
   agentStatuses?: { message: string, status: string }[]
   metadata?: {
     response_type?: string
@@ -343,6 +343,18 @@ function ChatContent() {
     const file = e.target.files?.[0]
     if (!file) return
 
+    if (file.size > 20 * 1024 * 1024) {
+      const uploadMsgId = crypto.randomUUID()
+      setMessages(prev => [...prev, {
+        id: uploadMsgId,
+        role: "assistant",
+        content: "Document upload failed. We couldn't process this document. Please try again. (The selected file exceeds the maximum allowed size of 20 MB.)",
+        status: "upload_error",
+      }])
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
     setIsUploading(true)
     const uploadMsgId = crypto.randomUUID()
     setMessages(prev => [...prev, {
@@ -382,7 +394,7 @@ function ChatContent() {
         const friendlyMsg = getFriendlyErrorMessage(new Error(detailedError), response.status)
         setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
           ...m,
-          status: "error",
+          status: "upload_error",
           content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
         } : m))
         setIsUploading(false)
@@ -430,7 +442,7 @@ function ChatContent() {
       const friendlyMsg = getFriendlyErrorMessage(err)
       setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
         ...m,
-        status: "error",
+        status: "upload_error",
         content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
       } : m))
       setIsUploading(false)
@@ -481,7 +493,7 @@ function ChatContent() {
           const friendlyMsg = getFriendlyErrorMessage(new Error(doc.error_message || "Backend processing failed."))
           setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
             ...m,
-            status: "error",
+            status: "upload_error",
             content: `Document upload failed. We couldn't process this document. Please try again. (${friendlyMsg})`
           } : m))
         }
@@ -839,7 +851,7 @@ function ChatContent() {
                     >
                       {message.role === "assistant" ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border">
-                          {message.status === "error" ? (
+                          {message.status === "error" || message.status === "upload_error" ? (
                             <div className="text-destructive flex items-center gap-2 font-medium">
                               <AlertTriangle className="h-4 w-4" />
                               {message.content}
