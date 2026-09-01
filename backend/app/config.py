@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str | None = None
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
-    EMBEDDING_PROVIDER: str = "gemini"  # 'gemini' or 'onnx'
+    EMBEDDING_PROVIDER: str = "onnx"  # 'gemini' or 'onnx'
     GEMINI_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     @property
@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     CHROMA_HOST: str = "chroma"
     CHROMA_PORT: int = 8000
     CHROMA_PERSIST_DIR: str = "storage/chromadb"
-    CHROMA_COLLECTION_NAME: str = "reforge_documents"
+    CHROMA_COLLECTION_NAME: str = "reforge_documents_v2"
 
     DATABASE_URL: str
     
