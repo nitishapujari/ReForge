@@ -177,6 +177,7 @@ class DocumentResponse(BaseModel):
 
     document_id: str
     filename: str
+    file_size: int = 0
     chunk_count: int
     created_at: str
     status: str

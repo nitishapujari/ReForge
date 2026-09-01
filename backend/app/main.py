@@ -103,7 +103,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 try:
                     await conn.execute(text("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)"))
                     await conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"))
+
                     await conn.execute(text("ALTER TABLE documents ADD COLUMN deleted_at DATETIME"))
+                    await conn.execute(text("ALTER TABLE documents ADD COLUMN file_size INTEGER DEFAULT 0"))
+
                     await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(36)"))
                 except Exception as e:
                     logger.warning("Schema migration error (might be already applied): %s", e)

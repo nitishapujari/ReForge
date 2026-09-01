@@ -46,6 +46,13 @@ class Document(Base):
         nullable=False,
         index=True,
     )
+    file_size: int = Column(
+        Integer,
+        default=0,
+        nullable=False,
+        server_default='0',
+        doc="Size of the file in bytes",
+    )
     chunk_count: int = Column(
         Integer,
         default=0,

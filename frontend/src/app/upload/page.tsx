@@ -29,10 +29,10 @@ const STAGES: TaskStatus[] = [
 const formatStatus = (status: TaskStatus) => {
   switch (status) {
     case "uploading": return "Uploading document..."
-    case "extracting text": return "Extracting text..."
-    case "generating embeddings": return "Analyzing document..."
-    case "indexing document": return "Saving to knowledge base..."
-    case "indexed successfully": return "Saved successfully ✓"
+    case "extracting text": return "Checking document..."
+    case "generating embeddings": return "Processing document..."
+    case "indexing document": return "Saving document..."
+    case "indexed successfully": return "Document ready ✓"
     default: return status
   }
 }
@@ -79,9 +79,22 @@ export default function UploadPage() {
   const [tasks, setTasks] = useState<UploadTask[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const pollIntervalsRef = useRef<Record<string, NodeJS.Timeout>>({})
+
+  useEffect(() => {
+    return () => {
+      Object.values(pollIntervalsRef.current).forEach(interval => {
+        clearInterval(interval)
+      })
+      pollIntervalsRef.current = {}
+    }
+  }, [])
 
   const validateFile = (selectedFile: File): string | null => {
     if (selectedFile.size === 0) return "The selected file is empty."
+    if (selectedFile.name.toLowerCase().endsWith(".doc")) {
+      return "Unsupported file type. Please upload a PDF, DOCX, TXT, CSV, MD, PNG, JPG, or JPEG file."
+    }
     
     const isValidType = selectedFile.type === "application/pdf" || 
                         selectedFile.type === "text/plain" ||
@@ -328,9 +341,19 @@ export default function UploadPage() {
     }
   }
 
+  const handleSkip = (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task) return
+    updateTask(taskId, { status: "canceled", progress: 0, errorMsg: undefined, duplicateData: undefined })
+  }
+
   const startPolling = (taskId: string, documentId: string) => {
     let stageIndex = 0
     let progress = 20
+
+    if (pollIntervalsRef.current[taskId]) {
+      clearInterval(pollIntervalsRef.current[taskId])
+    }
 
     const pollInterval = setInterval(async () => {
       try {
@@ -340,18 +363,19 @@ export default function UploadPage() {
         const docs = await response.json()
         const doc = docs.find((d: any) => d.document_id === documentId)
 
-        if (!doc) return // Might be deleted or not yet visible
+        if (!doc) return 
 
         if (doc.status === "completed") {
           clearInterval(pollInterval)
+          delete pollIntervalsRef.current[taskId]
           updateTask(taskId, { status: "indexed successfully", progress: 100 })
         } else if (doc.status === "failed") {
           clearInterval(pollInterval)
+          delete pollIntervalsRef.current[taskId]
           console.error("Upload error details (from polling):", doc.error_message)
           const friendlyMsg = getFriendlyErrorMessage(doc.error_message)
-          updateTask(taskId, { status: "error", errorMsg: friendlyMsg || "Backend processing failed.", progress: 0 })
+          updateTask(taskId, { status: "error", errorMsg: friendlyMsg || "Document couldn't be processed.", progress: 0 })
         } else {
-          // Simulate progression
           stageIndex = Math.min(stageIndex + 1, STAGES.length - 1)
           progress = Math.min(progress + 15, 90)
           updateTask(taskId, { status: STAGES[stageIndex], progress })
@@ -360,11 +384,18 @@ export default function UploadPage() {
         console.error("Polling error", e)
       }
     }, 2000)
+
+    pollIntervalsRef.current[taskId] = pollInterval
   }
 
   const cancelTask = async (taskId: string) => {
     const task = tasks.find(t => t.id === taskId)
     if (!task) return
+
+    if (pollIntervalsRef.current[taskId]) {
+      clearInterval(pollIntervalsRef.current[taskId])
+      delete pollIntervalsRef.current[taskId]
+    }
 
     if (task.status === "uploading" && task.abortController) {
       task.abortController.abort()
@@ -510,9 +541,14 @@ export default function UploadPage() {
                   </Button>
                 )}
                 {task.status === "duplicate" && (
-                  <Button variant="default" size="sm" onClick={() => handleReplace(task.id)}>
-                    Replace
-                  </Button>
+                  <>
+                    <Button variant="secondary" size="sm" onClick={() => handleSkip(task.id)}>
+                      Skip
+                    </Button>
+                    <Button variant="default" size="sm" onClick={() => handleReplace(task.id)}>
+                      Replace
+                    </Button>
+                  </>
                 )}
                 
                 {(!["indexed successfully", "error", "canceled", "duplicate", "idle"].includes(task.status)) && (

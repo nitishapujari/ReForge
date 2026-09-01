@@ -44,3 +44,5 @@ backend/storage/*.db-shm
 backend/storage/*.db-wal
 backend/storage/temp_docs/
 backend/storage/chromadb/
+# Ignore uploaded test documents
+backend/data/uploads/*

@@ -23,7 +23,9 @@ type Message = {
   role: "user" | "assistant"
   content: string
   attached_documents?: { document_id: string, filename: string }[]
-  status?: "generating" | "done" | "error" | "interrupted" | "upload_error"
+  status?: "generating" | "done" | "error" | "interrupted" | "upload_error" | "duplicate"
+  duplicateData?: any
+  file?: File
   agentStatuses?: { message: string, status: string }[]
   metadata?: {
     response_type?: string
@@ -335,6 +337,119 @@ function ChatContent() {
     }
   }, [])
 
+  const handleSkipDuplicate = (msgId: string) => {
+    setMessages(prev => prev.map(m => {
+      if (m.id !== msgId || !m.duplicateData) return m
+      
+      const docId = m.duplicateData.document_id
+      const filename = m.duplicateData.filename
+      
+      setSelectedDocs(docs => {
+        if (!docs.find(d => d.document_id === docId)) {
+          return [...docs, { document_id: docId, filename }]
+        }
+        return docs
+      })
+      
+      setAvailableDocs(docs => {
+        if (!docs.find(d => d.document_id === docId)) {
+          return [...docs, { document_id: docId, filename }]
+        }
+        return docs
+      })
+      
+      return {
+        ...m,
+        status: "done",
+        content: `✅ Document **${filename}** is already uploaded. It has been added to the chat.`
+      }
+    }))
+  }
+
+  const handleReplaceDuplicate = async (msgId: string) => {
+    const msg = messages.find(m => m.id === msgId)
+    if (!msg || !msg.duplicateData || !msg.file) return
+
+    setMessages(prev => prev.map(m => m.id === msgId ? {
+      ...m,
+      status: "generating",
+      content: "",
+      agentStatuses: [{ message: `Replacing document ${msg.file!.name}...`, status: "info" }]
+    } : m))
+
+    const formData = new FormData()
+    formData.append("file", msg.file)
+    
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      const requestUrl = backendUrl ? `${backendUrl.replace(/\/+$/, '')}/api/v1/documents/${msg.duplicateData.document_id}` : `/api/v1/documents/${msg.duplicateData.document_id}`
+      
+      const headers: HeadersInit = {}
+      if ((session as any)?.accessToken) {
+        headers["Authorization"] = `Bearer ${(session as any).accessToken}`
+      }
+
+      const response = await fetch(requestUrl, {
+        method: "PUT",
+        body: formData,
+        headers
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to replace document")
+      }
+
+      // Resume polling
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch("/api/v1/documents")
+          if (!res.ok) return
+          const docs = await res.json()
+          const doc = docs.find((d: any) => d.document_id === msg.duplicateData.document_id)
+          if (!doc) return
+
+          if (doc.status === "completed") {
+            clearInterval(pollInterval)
+            uploadPollIntervalsRef.current.delete(pollInterval)
+            setSelectedDocs(prev => {
+              if (!prev.find(d => d.document_id === msg.duplicateData.document_id)) {
+                return [...prev, { document_id: msg.duplicateData.document_id, filename: msg.file!.name }]
+              }
+              return prev
+            })
+            setAvailableDocs(prev => {
+              if (!prev.find(d => d.document_id === msg.duplicateData.document_id)) {
+                return [...prev, { document_id: msg.duplicateData.document_id, filename: msg.file!.name }]
+              }
+              return prev
+            })
+            setMessages(prev => prev.map(m => m.id === msgId ? {
+              ...m,
+              status: "done",
+              content: `✅ Document **${msg.file!.name}** replaced successfully. It has been added to the chat.`
+            } : m))
+          } else if (doc.status === "failed") {
+            clearInterval(pollInterval)
+            uploadPollIntervalsRef.current.delete(pollInterval)
+            setMessages(prev => prev.map(m => m.id === msgId ? {
+              ...m,
+              status: "upload_error",
+              content: `Document upload failed. We couldn't process this document. Please try again.`
+            } : m))
+          }
+        } catch(e) {}
+      }, 2000)
+      uploadPollIntervalsRef.current.add(pollInterval)
+
+    } catch (err: any) {
+      setMessages(prev => prev.map(m => m.id === msgId ? {
+        ...m,
+        status: "upload_error",
+        content: `Document upload failed. We couldn't process this document. Please try again.`
+      } : m))
+    }
+  }
+
   const handleUploadClick = () => {
     fileInputRef.current?.click()
   }
@@ -342,6 +457,18 @@ function ChatContent() {
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    if (file.name.toLowerCase().endsWith(".doc")) {
+      const uploadMsgId = crypto.randomUUID()
+      setMessages(prev => [...prev, {
+        id: uploadMsgId,
+        role: "assistant",
+        content: "Unsupported file type. Please upload a PDF, DOCX, TXT, CSV, MD, PNG, JPG, or JPEG file.",
+        status: "upload_error",
+      }])
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
 
     if (file.size > 20 * 1024 * 1024) {
       const uploadMsgId = crypto.randomUUID()
@@ -406,22 +533,12 @@ function ChatContent() {
       
       if (data.duplicate) {
         const docId = data.existing_document_id || data.document_id
-        setSelectedDocs(prev => {
-          if (!prev.find(d => d.document_id === docId)) {
-            return [...prev, { document_id: docId, filename: file.name }]
-          }
-          return prev
-        })
-        setAvailableDocs(prev => {
-          if (!prev.find(d => d.document_id === docId)) {
-            return [...prev, { document_id: docId, filename: file.name }]
-          }
-          return prev
-        })
         setMessages(prev => prev.map(m => m.id === uploadMsgId ? {
           ...m,
-          status: "done",
-          content: `✅ Document **${file.name}** is already uploaded. It has been added to the chat.`
+          status: "duplicate",
+          content: "This document already exists.",
+          duplicateData: { document_id: docId, filename: file.name },
+          file: file
         } : m))
         setIsUploading(false)
         if (fileInputRef.current) fileInputRef.current.value = ""
@@ -851,7 +968,18 @@ function ChatContent() {
                     >
                       {message.role === "assistant" ? (
                         <div className="prose prose-sm dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-black/50 prose-pre:border">
-                          {message.status === "error" || message.status === "upload_error" ? (
+                          {message.status === "duplicate" ? (
+                            <div className="flex flex-col gap-3">
+                              <div className="text-foreground flex items-center gap-2 font-medium">
+                                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                {message.content}
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="secondary" size="sm" onClick={() => handleSkipDuplicate(message.id)}>Skip</Button>
+                                <Button variant="default" size="sm" onClick={() => handleReplaceDuplicate(message.id)}>Replace</Button>
+                              </div>
+                            </div>
+                          ) : message.status === "error" || message.status === "upload_error" ? (
                             <div className="text-destructive flex items-center gap-2 font-medium">
                               <AlertTriangle className="h-4 w-4" />
                               {message.content}

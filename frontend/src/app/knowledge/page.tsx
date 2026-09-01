@@ -16,18 +16,21 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { 
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
-import { FileText, Trash2, Search, Library, AlertCircle, ChevronLeft, ChevronRight, Plus, MoreVertical, PenLine, Info, RefreshCw } from "lucide-react"
+import { FileText, Trash2, Search, Library, AlertCircle, ChevronLeft, ChevronRight, Plus, MoreVertical, PenLine, Info, RefreshCw, Eye } from "lucide-react"
+import { useSession } from "next-auth/react"
 import Link from "next/link"
 
 interface DocumentData {
   document_id: string
   filename: string
   chunk_count: number
+  file_size?: number
   created_at: string
   status?: string
 }
 
 export default function KnowledgeBasePage() {
+  const { data: session } = useSession()
   const [documents, setDocuments] = useState<DocumentData[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
@@ -111,7 +114,14 @@ export default function KnowledgeBasePage() {
       const res = await fetch(`/api/v1/documents/${documentToDelete.document_id}`, {
         method: 'DELETE'
       })
-      if (!res.ok) throw new Error("Failed to delete document")
+      if (!res.ok) {
+        let msg = "Failed to delete document"
+        try {
+          const err = await res.json()
+          if (err.detail) msg = err.detail
+        } catch(e){}
+        throw new Error(msg)
+      }
       
       // Optimistic update
       setDocuments(prev => prev.filter(d => d.document_id !== documentToDelete.document_id))
@@ -136,7 +146,14 @@ export default function KnowledgeBasePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filename: newFilename.trim() })
       })
-      if (!res.ok) throw new Error("Failed to rename document")
+      if (!res.ok) {
+        let msg = "Failed to rename document"
+        try {
+          const err = await res.json()
+          if (err.detail) msg = err.detail
+        } catch(e){}
+        throw new Error(msg)
+      }
       
       const data = await res.json()
       setDocuments(prev => prev.map(d => d.document_id === documentToRename.document_id ? { ...d, filename: data.filename } : d))
@@ -149,6 +166,40 @@ export default function KnowledgeBasePage() {
   }
 
   // Helpers
+  const formatSize = (bytes: number | undefined) => {
+    if (bytes === undefined || bytes === null) return "Unknown"
+    if (bytes < 1024) return bytes + ' B'
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'
+    else return (bytes / 1048576).toFixed(1) + ' MB'
+  }
+
+  const handleViewContent = async (doc: DocumentData) => {
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || ""
+      const headers: HeadersInit = {}
+      if ((session as any)?.accessToken) {
+        headers["Authorization"] = `Bearer ${(session as any).accessToken}`
+      }
+      const response = await fetch(`${backendUrl.replace(/\/+$/, '')}/api/v1/documents/${doc.document_id}/content`, {
+        headers
+      })
+      if (!response.ok) {
+        let msg = "Failed to view document."
+        try {
+          const err = await response.json()
+          if (err.detail) msg = err.detail
+        } catch(e) {}
+        throw new Error(msg)
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } catch(err: any) {
+      setErrorMsg(err.message || "Failed to open document")
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -208,7 +259,7 @@ export default function KnowledgeBasePage() {
           </div>
           <h2 className="text-xl font-semibold mb-2">No documents uploaded yet</h2>
           <p className="text-muted-foreground mb-6 max-w-sm">
-            Upload your first document to start building your knowledge base.
+            Upload your first document to start building your library.
           </p>
           <Link href="/upload">
             <Button size="lg" className="hover:shadow-md transition-shadow">Upload Document</Button>
@@ -234,7 +285,7 @@ export default function KnowledgeBasePage() {
                 <TableRow>
                   <TableHead className="w-[45%]">Document</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Segments</TableHead>
+                  <TableHead className="text-right">Size</TableHead>
                   <TableHead className="text-right">Uploaded On</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
@@ -270,7 +321,7 @@ export default function KnowledgeBasePage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right font-mono text-sm group-hover:text-foreground transition-colors">
-                        {doc.chunk_count.toLocaleString()}
+                        {formatSize(doc.file_size)}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground group-hover:text-foreground transition-colors">
                         {formatDate(doc.created_at)}
@@ -282,6 +333,9 @@ export default function KnowledgeBasePage() {
                             <span className="sr-only">Open menu</span>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuItem className="text-muted-foreground cursor-pointer hover:text-foreground" onClick={(e) => { e.stopPropagation(); handleViewContent(doc); }}>
+                              <Eye className="h-4 w-4 mr-2" /> View
+                            </DropdownMenuItem>
                             <DropdownMenuItem className="text-muted-foreground cursor-pointer hover:text-foreground" onClick={(e) => { e.stopPropagation(); setDocumentToRename(doc); setNewFilename(doc.filename); }}>
                               <PenLine className="h-4 w-4 mr-2" /> Rename
                             </DropdownMenuItem>
@@ -349,7 +403,7 @@ export default function KnowledgeBasePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <span className="font-semibold text-foreground">"{documentToDelete?.filename}"</span> from your knowledge base. This action cannot be undone.
+              This will permanently delete <span className="font-semibold text-foreground">"{documentToDelete?.filename}"</span> from your library. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -418,8 +472,8 @@ export default function KnowledgeBasePage() {
                 <span className="col-span-2 capitalize">{documentToView.status}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 border-b pb-2">
-                <span className="text-muted-foreground font-medium">Segments</span>
-                <span className="col-span-2">{documentToView.chunk_count.toLocaleString()}</span>
+                <span className="text-muted-foreground font-medium">Size</span>
+                <span className="col-span-2">{formatSize(documentToView.file_size)}</span>
               </div>
               <div className="grid grid-cols-3 gap-2 pb-2">
                 <span className="text-muted-foreground font-medium">Uploaded On</span>

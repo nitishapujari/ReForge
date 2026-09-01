@@ -22,5 +22,5 @@ CONFIDENCE_THRESHOLD: float = 0.7
 
 EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
 
-ALLOWED_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx", ".csv", ".md", ".png", ".jpg"}
+ALLOWED_EXTENSIONS: set[str] = {".pdf", ".txt", ".docx", ".csv", ".md", ".png", ".jpg", ".jpeg"}
 MAX_FILE_SIZE_MB: int = 20

@@ -40,6 +40,24 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 
+from fastapi.responses import FileResponse
+
+UPLOADS_DIR = Path("data/uploads")
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _save_file(document_id: str, ext: str, content: bytes):
+    file_path = UPLOADS_DIR / f"{document_id}{ext}"
+    file_path.write_bytes(content)
+
+def _delete_file(document_id: str, ext: str):
+    file_path = UPLOADS_DIR / f"{document_id}{ext}"
+    if file_path.exists():
+        try:
+            file_path.unlink()
+        except OSError as e:
+            logger.error(f"[Storage Error] Failed to delete physical file {file_path}: {e}")
+
+
 _active_tasks = set()
 
 def _fire_and_forget(task: asyncio.Task):
@@ -55,6 +73,9 @@ async def run_ingestion_task(
     file_content: bytes | None,
     file_hash: str | None,
     is_replace: bool = False,
+    old_filename: str | None = None,
+    old_file_size: int | None = None,
+    old_file_hash: str | None = None,
 ):
     """Background task to process the document and update DB state, shielded from cancellation and DB locks."""
     async def _execute():
@@ -119,32 +140,83 @@ async def run_ingestion_task(
                     await db.commit()
                     logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> completed | Chunk Count: %d | Total Ingestion Time: %.2fs", document_id, len(chunk_ids), time.perf_counter() - task_start)
                 
+            # Step 5: Atomically promote physical file for replacements
+            if is_replace:
+                ext = Path(filename).suffix.lower()
+                tmp_file_path = UPLOADS_DIR / f"{document_id}{ext}.tmp"
+                final_file_path = UPLOADS_DIR / f"{document_id}{ext}"
+                if tmp_file_path.exists():
+                    try:
+                        # os.replace is atomic on POSIX, and generally safe on Windows
+                        os.replace(tmp_file_path, final_file_path)
+                    except OSError as e:
+                        logger.error(f"Failed to promote replacement file {tmp_file_path} to {final_file_path}: {e}")
+                
         except Exception as e:
             total_fail_time = time.perf_counter() - task_start
             logger.error("[Ingestion Task Fatal Exception] Document ID: %s | Filename: '%s' failed after %.2fs.\nException: %r\nTraceback:\n%s", document_id, filename, total_fail_time, e, traceback.format_exc())
+            
+            if is_replace:
+                # Cleanup the unused temporary file for replacement
+                ext = Path(filename).suffix.lower()
+                _delete_file(document_id, ext + ".tmp")
+            else:
+                # Cleanup the physical file for new uploads
+                ext = Path(filename).suffix.lower()
+                _delete_file(document_id, ext)
+                
             try:
                 factory = get_session_factory()
                 async with factory() as db:
                     doc = await db.get(Document, document_id)
                     if doc:
-                        doc.status = "failed"
-                        doc.error_message = f"{type(e).__name__}: {str(e)}"
+                        if is_replace:
+                            # Revert to original state on failure
+                            doc.status = "completed"
+                            doc.filename = old_filename or doc.filename
+                            doc.file_size = old_file_size or doc.file_size
+                            doc.file_hash = old_file_hash or doc.file_hash
+                            logger.info("[Database Status Reverted] Document ID: %s replacement failed, restored original metadata", document_id)
+                        else:
+                            doc.status = "failed"
+                            doc.error_message = f"{type(e).__name__}: {str(e)}"
+                            logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> failed | Error: %s", document_id, doc.error_message)
                         await db.commit()
-                        logger.info("[Database Status Transition] Document ID: %s | Transition: processing -> failed | Error: %s", document_id, doc.error_message)
             except Exception as db_err:
-                logger.error("[Database Fatal] Failed to update status to failed for %s.\nException: %r\nTraceback:\n%s", document_id, db_err, traceback.format_exc())
+                logger.error("[Database Fatal] Failed to update status for %s.\nException: %r\nTraceback:\n%s", document_id, db_err, traceback.format_exc())
 
     task = asyncio.create_task(_execute())
     _fire_and_forget(task)
     try:
         await asyncio.shield(task)
     except asyncio.CancelledError:
-        logger.warning(f"[Ingestion Task Detached] Task for document {document_id} was cancelled by HTTP disconnect, but background ingestion continues undisturbed.")
+        logger.warning(f"[Ingestion Task Detached] Task for document {document_id} was cancelled by HTTP disconnect. Note: this does not survive process termination.")
 
 
 
 
 
+
+async def _read_bounded_upload(file: UploadFile) -> bytes:
+    max_file_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    content_chunks = []
+    total_size = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > max_file_size_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB.",
+            )
+        content_chunks.append(chunk)
+    
+    file_content = b"".join(content_chunks)
+    if not file_content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File is empty.")
+    return file_content
 
 def _validate_upload(filename: str, content: bytes) -> None:
     ext = Path(filename).suffix.lower()
@@ -153,12 +225,27 @@ def _validate_upload(filename: str, content: bytes) -> None:
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=f"Unsupported file type '{ext}'. Allowed types: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
-    max_file_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
-    if len(content) > max_file_size_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large. Maximum size is {MAX_FILE_SIZE_MB}MB.",
-        )
+    
+    # Verify content signature
+    if ext == ".pdf":
+        if not content.startswith(b"%PDF-"):
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid PDF signature.")
+    elif ext == ".png":
+        if not content.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid PNG signature.")
+    elif ext in (".jpg", ".jpeg"):
+        if not content.startswith(b"\xff\xd8\xff"):
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid JPEG signature.")
+    elif ext == ".docx":
+        if not content.startswith(b"PK\x03\x04"):
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid DOCX signature.")
+    elif ext in (".txt", ".csv", ".md"):
+        try:
+            text_chunk = content[:1024].decode("utf-8")
+            if "\x00" in text_chunk:
+                raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Text files cannot contain null bytes.")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Invalid text encoding. Must be valid UTF-8.")
 
 
 @router.post(
@@ -186,7 +273,7 @@ async def upload_document(
             detail="No filename provided.",
         )
 
-    file_content = await file.read()
+    file_content = await _read_bounded_upload(file)
     _validate_upload(file.filename, file_content)
         
     file_hash = hashlib.sha256(file_content).hexdigest()
@@ -203,7 +290,7 @@ async def upload_document(
     if existing_docs:
         existing_doc = existing_docs[0]
         is_exact = existing_doc.file_hash == file_hash
-        message = "This document is already in the knowledge base." if is_exact else "A document with this filename already exists, but the content is different. Do you want to replace it?"
+        message = "This document is already uploaded." if is_exact else "A document with this filename already exists, but the content is different. Do you want to replace it?"
         
         logger.info("Duplicate document upload prevented: %s", file.filename)
         return DocumentUploadResponse(
@@ -216,20 +303,33 @@ async def upload_document(
         )
 
     # Create new document record in SQLite
-    new_doc = Document(filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id)
+    new_doc_id = str(uuid.uuid4())
+    new_doc = Document(id=new_doc_id, filename=file.filename, file_hash=file_hash, status="processing", user_id=current_user.id, file_size=len(file_content))
+    
+    # Save the file BEFORE committing to DB to prevent orphaned DB rows
+    ext = Path(file.filename).suffix.lower()
+    try:
+        _save_file(new_doc.id, ext, file_content)
+    except Exception as e:
+        logger.error("Failed to save physical file for new doc: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to save physical file.")
+        
     db.add(new_doc)
     
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
+        # Clean up the physical file we just saved
+        _delete_file(new_doc.id, ext)
+        
         # Concurrency collision occurred, another identical upload just committed
         result = await db.execute(stmt)
         existing_docs = result.scalars().all()
         if existing_docs:
             existing_doc = existing_docs[0]
             is_exact = existing_doc.file_hash == file_hash
-            message = "This document is already in the knowledge base." if is_exact else "A document with this filename already exists, but the content is different. Do you want to replace it?"
+            message = "This document is already uploaded." if is_exact else "A document with this filename already exists, but the content is different. Do you want to replace it?"
             logger.info("Duplicate document upload prevented via IntegrityError recovery: %s", file.filename)
             return DocumentUploadResponse(
                 document_id=existing_doc.id,
@@ -242,7 +342,7 @@ async def upload_document(
         else:
             logger.error("IntegrityError during upload for '%s', but duplicate not found.", file.filename)
             raise HTTPException(status_code=500, detail="Database integrity error during upload.")
-
+    
     # Process document in the background detached from request lifecycle
     task = asyncio.create_task(
         run_ingestion_task(
@@ -300,9 +400,13 @@ async def replace_document(
             detail="Document is currently being processed. Please wait for ingestion to finish before replacing.",
         )
 
-    file_content = await file.read()
+    file_content = await _read_bounded_upload(file)
     _validate_upload(file.filename, file_content)
     file_hash = hashlib.sha256(file_content).hexdigest()
+
+    old_filename = doc.filename
+    old_file_size = doc.file_size
+    old_file_hash = doc.file_hash
 
     from sqlalchemy import update
     from datetime import datetime, timezone
@@ -320,6 +424,7 @@ async def replace_document(
             status="processing",
             filename=file.filename,
             file_hash=file_hash,
+            file_size=len(file_content),
             updated_at=datetime.now(timezone.utc)
         )
     )
@@ -341,6 +446,20 @@ async def replace_document(
             detail="A document with this filename or content already exists."
         )
 
+    # Save to a temporary file, DO NOT overwrite the original file yet!
+    ext = Path(file.filename).suffix.lower()
+    try:
+        _save_file(document_id, ext + ".tmp", file_content)
+    except Exception as e:
+        logger.error("Failed to save physical file for replace %s: %s", document_id, e)
+        # Rollback db update
+        rollback_stmt = update(Document).where(Document.id == document_id).values(
+            status="completed", filename=old_filename, file_size=old_file_size, file_hash=old_file_hash
+        )
+        await db.execute(rollback_stmt)
+        await db.commit()
+        raise HTTPException(status_code=500, detail="Failed to save physical file.")
+
     # Process document in the background detached from request lifecycle
     task = asyncio.create_task(
         run_ingestion_task(
@@ -350,6 +469,9 @@ async def replace_document(
             file_content=file_content,
             file_hash=file_hash,
             is_replace=True,
+            old_filename=old_filename,
+            old_file_size=old_file_size,
+            old_file_hash=old_file_hash,
         )
     )
     _fire_and_forget(task)
@@ -389,6 +511,7 @@ async def list_documents(
             "document_id": doc.id,
             "filename": doc.filename,
             "chunk_count": doc.chunk_count,
+            "file_size": doc.file_size,
             "created_at": doc.created_at.isoformat(),
             "status": doc.status,
             "error_message": doc.error_message,
@@ -402,6 +525,34 @@ from pydantic import BaseModel
 class RenameDocumentRequest(BaseModel):
     filename: str
 
+
+@router.get(
+    "/{document_id}/content",
+    summary="View Document Content",
+    description="Retrieve the original uploaded file for the given document.",
+)
+async def get_document_content(
+    document_id: str,
+    current_user: CurrentUser,
+    db: AsyncSession = Depends(get_db_session)
+):
+    doc = await db.get(Document, document_id)
+    if not doc or doc.user_id != current_user.id or doc.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found."
+        )
+    
+    ext = Path(doc.filename).suffix.lower()
+    file_path = UPLOADS_DIR / f"{document_id}{ext}"
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document file is missing from storage."
+        )
+        
+    return FileResponse(path=file_path, filename=doc.filename)
+
 @router.patch("/{document_id}/rename", summary="Rename Document")
 async def rename_document(
     document_id: str,
@@ -413,6 +564,11 @@ async def rename_document(
     if not doc or doc.user_id != current_user.id or doc.is_deleted:
         raise HTTPException(status_code=404, detail="Document not found.")
     
+    old_ext = Path(doc.filename).suffix.lower()
+    new_ext = Path(request.filename).suffix.lower()
+    if old_ext != new_ext:
+        raise HTTPException(status_code=400, detail="Cannot change file extension during rename.")
+
     doc.filename = request.filename
     try:
         await db.commit()
@@ -493,6 +649,9 @@ async def delete_document(
     doc.deleted_at = datetime.now(timezone.utc)
     doc.status = "deleted"
     await db.commit()
+    
+    ext = Path(doc.filename).suffix.lower()
+    _delete_file(document_id, ext)
 
     return {
         "document_id": document_id,
