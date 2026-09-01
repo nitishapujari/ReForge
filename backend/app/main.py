@@ -93,39 +93,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     factory = db_mod.get_session_factory()
     async with factory() as session:
-        # 1. Manual Schema Migrations (since we don't use Alembic)
-        try:
-            # Check if user_id exists on documents
-            await session.execute(text("SELECT user_id FROM documents LIMIT 1"))
-        except OperationalError:
-            logger.info("Migrating schema: Adding missing columns to documents and chat_sessions")
-            async with db_mod._engine.begin() as conn:
-                try:
-                    await conn.execute(text("ALTER TABLE documents ADD COLUMN user_id VARCHAR(36)"))
-                    await conn.execute(text("ALTER TABLE documents ADD COLUMN is_deleted BOOLEAN DEFAULT FALSE NOT NULL"))
-
-                    await conn.execute(text("ALTER TABLE documents ADD COLUMN deleted_at DATETIME"))
-                    await conn.execute(text("ALTER TABLE documents ADD COLUMN file_size INTEGER DEFAULT 0"))
-
-                    await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN user_id VARCHAR(36)"))
-                except Exception as e:
-                    logger.warning("Schema migration error (might be already applied): %s", e)
-                    
-        # 1.1 Apply Idempotent Indexes
-        try:
-            async with db_mod._engine.begin() as conn:
-                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filename ON documents(user_id, filename) WHERE is_deleted = FALSE"))
-                await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS idx_active_filehash ON documents(user_id, file_hash) WHERE is_deleted = FALSE AND file_hash IS NOT NULL"))
-        except Exception as e:
-            logger.critical(
-                "FATAL: Failed to create unique indexes. "
-                "This usually means your database already contains duplicate "
-                "active documents. You must manually clean up duplicates before "
-                "starting the application to guarantee data integrity. Error: %s",
-                e,
-            )
-            raise SystemExit(1) from e
-
         # 2. Create Default Admin User
         admin_email = "admin@reforge.local"
         result = await session.execute(select(User).where(User.email == admin_email))

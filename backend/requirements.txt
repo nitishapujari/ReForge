@@ -26,3 +26,5 @@ bcrypt==4.1.2
 duckduckgo-search>=6.0.0
 slowapi==0.1.9
 tenacity>=8.3.0
+
+alembic==1.14.1

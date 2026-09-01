@@ -55,9 +55,6 @@ async def init_db(database_url: str) -> None:
         expire_on_commit=False,
     )
 
-    # Create all tables
-    async with _engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
     logger.info("Database initialized with URL: %s", database_url.split('@')[-1] if '@' in database_url else database_url)
 
